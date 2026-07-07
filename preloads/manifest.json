@@ -3,5 +3,10 @@
     "name": "hello",
     "file": "hello.js",
     "description": "Gentle starter pattern"
+  },
+  {
+    "name": "vocalization 1",
+    "file": "vocalization-1.js",
+    "description": "Melodic vocal-like sequence with punchcard"
   }
 ]
