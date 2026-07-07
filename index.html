@@ -516,53 +516,15 @@
             start: function() {
               if (this.animId) return;
               this.events = [];
-              this._seen = {};  // dedup key -> true
+              this.rows = [];
               this.init();
 
-              // Listen for punchcard-note events from onTrigger hook
-              var self = this;
-              this._onNote = function(e) {
-                console.log("[pn] handler event:", e.detail);
-                if (!e.detail || e.detail.value == null) {
-                  console.log("[pn] handler: no detail/value");
-                  return;
-                }
-                var label = self.labelFromValue(e.detail.value);
-                console.log("[pn] handler: labelFromValue ->", label, "from value:", e.detail.value);
-                if (!label) return;
-
-                // Get cycle time
-                var t = e.detail.time || 0;
-                // Normalize to 0..1 within current cycle
-                var cycleFrac = (t % self.cycleLen) / self.cycleLen;
-                if (!isFinite(cycleFrac)) cycleFrac = 0;
-
-                // Deduplicate: same label at roughly same time position
-                var dedupKey = label + '_' + (Math.round(cycleFrac * 1000) / 1000);
-                if (self._seen[dedupKey]) return;
-                self._seen[dedupKey] = true;
-
-                self.events.push({ time: cycleFrac, label: String(label) });
-
-                // Track this row
-                if (self.rows.indexOf(label) === -1) {
-                  self.rows.push(label);
-                  self.rows.sort();
-                }
-
-                // Prune old events (keep last 200)
-                if (self.events.length > 200) {
-                  self.events = self.events.slice(-200);
-                }
-              };
-              document.addEventListener('pn', this._onNote);
-
-              // Start cycle timing
+              // Record cycle start
               try { this.startCycle = getTime ? getTime() : 0; } catch(e) { this.startCycle = 0; }
               try { this.cycleLen = cps ? (1 / (cps() || 1)) : 1; } catch(e) { this.cycleLen = 1; }
               if (!isFinite(this.cycleLen) || this.cycleLen <= 0) this.cycleLen = 1;
 
-              var col = 0;
+              var self = this;
               function frame() {
                 self.animId = requestAnimationFrame(frame);
                 self.draw();
@@ -570,14 +532,79 @@
               frame();
             },
 
+            /**
+             * Build punchcard data by querying a Pattern.
+             * pattern: the playing Pattern (or sub-Pattern) returned by evaluate()
+             */
+            buildFromPattern: function(pattern) {
+              console.log("[pn] buildFromPattern called");
+              if (!pattern) {
+                console.log("[pn] pattern is null/undefined");
+                return;
+              }
+              if (typeof pattern.queryArc !== 'function') {
+                console.log("[pn] pattern has no queryArc method");
+                return;
+              }
+
+              try {
+                // Query one full cycle (0 to 1)
+                console.log("[pn] calling queryArc(0, 1)...");
+                var haps = pattern.queryArc(0, 1);
+                console.log("[pn] queryArc returned", haps.length, "haps");
+
+                this.events = [];
+                this.rows = [];
+                var self = this;
+
+                haps.forEach(function(hap) {
+                  // Skip non-onset haps (rests, tied notes from previous cycle)
+                  if (!hap.hasOnset || !hap.hasOnset()) return;
+
+                  var label = self.labelFromValue(hap.value);
+                  console.log("[pn] hap label:", label, "value:", hap.value);
+                  if (!label) return;
+
+                  // Get cycle-relative position (0-1)
+                  var time = 0;
+                  if (hap.part && hap.part.begin) {
+                    try {
+                      var fract = hap.part.begin;
+                      // Floor and sub — convert Fraction to 0-1 cycle position
+                      if (typeof fract.floor === 'function' && typeof fract.sub === 'function') {
+                        var floored = fract.floor(1);
+                        var withinCycle = fract.sub(floored);
+                        time = Number(withinCycle);
+                      } else {
+                        time = Number(fract) % 1;
+                      }
+                    } catch(e) {
+                      console.warn("[pn] cannot compute cycle pos:", e);
+                    }
+                  }
+                  if (!isFinite(time)) time = 0;
+                  if (time < 0) time += 1;
+                  if (time >= 1) time -= 1;
+
+                  self.events.push({ time: time, label: String(label) });
+
+                  if (self.rows.indexOf(String(label)) === -1) {
+                    self.rows.push(String(label));
+                  }
+                });
+
+                this.rows.sort();
+                console.log("[pn] Built punchcard:", this.events.length, "events,", this.rows.length, "rows:", this.rows);
+              } catch(e) {
+                console.error("[pn] buildFromPattern error:", e);
+                console.error(e.stack);
+              }
+            },
+
             stop: function() {
               if (this.animId) {
                 cancelAnimationFrame(this.animId);
                 this.animId = null;
-              }
-              if (this._onNote) {
-                document.removeEventListener('pn', this._onNote);
-                this._onNote = null;
               }
               punchcardCtx.clearRect(0, 0, punchcardCanvas.width, punchcardCanvas.height);
             },
@@ -758,90 +785,10 @@
     }
 
     /* ── Play / Stop ── */
+    /* Piano roll: evaluate() returns the Pattern; we queryArc() it directly to get hap events.
+     * No code wrapping, no hooks, no CustomEvents needed. */
 
-    /**
-     * Detect if a line looks like a strudel pattern expression.
-     * Returns: true = pattern starter, null = chain continuation, false = not a pattern
-     */
-    function looksLikePattern(line) {
-      if (/^\s*\./.test(line)) return null;     // chain continuation
-      var t = line.trim().replace(/;+\s*$/, '');
-      if (!t) return false;
-
-      // Strudel function starters that produce patterns
-      if (/^(s|note|n|sound|h|stack|pure|silence|sequence|seqPLoop|fastcat|cat|timecat|randcat|choose|chooseCycles|rand|irand|perlin|cosine|sine|square|saw|tri|wchoose|wchooseCycles|chooseWith|chooseIn|chooseInWith|signal)\b/.test(t)) return true;
-
-      // String literal (mini syntax — strudel auto-coerces)
-      if (/^["']/.test(t)) return true;
-
-      // Pure number (coerced to constant pattern)
-      if (/^-?\d+(\.\d+)?$/.test(t)) return true;
-
-      return false;
-    }
-
-    function wrapForPunchcard(code) {
-      var lines = code.split('\n');
-      // Trim trailing empty lines
-      while (lines.length && !lines[lines.length-1].trim()) lines.pop();
-      if (!lines.length) return code;
-
-      // Find the last pattern expression (search backward from end).
-      // A pattern may span multiple lines via chain continuations (.fast, .note, etc.)
-      var patternStart = -1, patternEnd = -1;
-      for (var i = lines.length - 1; i >= 0; i--) {
-        var line = lines[i];
-        if (!line.trim()) continue;
-        var kind = looksLikePattern(line);
-        if (kind === null) continue;   // chain — keep searching for the start
-        if (kind === true) {
-          patternStart = i;
-          patternEnd = i;
-          // Collect chain continuation lines after the start (.fast, .note, etc.)
-          // Skip empty lines but stop at the first non-empty, non-chain line
-          for (var j = i + 1; j < lines.length; j++) {
-            if (!lines[j].trim()) continue;
-            if (/^\s*\./.test(lines[j])) {
-              patternEnd = j;
-            } else {
-              break;
-            }
-          }
-          break;
-        }
-        // kind === false — not a pattern (function call, assignment, etc.)
-      }
-
-      // No pattern found — return code unchanged (punchcard will have no data)
-      if (patternStart === -1) return code;
-
-      // Build full pattern expression (may be multi-line)
-      var patternExpr = lines.slice(patternStart, patternEnd + 1).join('\n');
-      patternExpr = patternExpr.replace(/;+\s*$/, '');
-
-      // All non-pattern lines go into prefix (executed before the pattern)
-      var prefix = [];
-      for (var m = 0; m < lines.length; m++) {
-        if (m < patternStart || m > patternEnd) prefix.push(lines[m]);
-      }
-
-      // Wrap pattern with .onTrigger() which fires once per audio trigger
-      var wrapped = patternExpr + '.onTrigger(function(hap){' +
-        'try{' +
-          'console.log("[pn] trigger", typeof hap, hap && JSON.stringify(hap.value));' +
-          'document.dispatchEvent(new CustomEvent("pn",{' +
-            'detail:{value: hap && hap.value ? hap.value : hap, time: typeof getTime!=="undefined" ? getTime() : 0}' +
-          '}))' +
-        '}catch(e){console.error("[pn] trigger error:", e)}' +
-      '})';
-
-      console.log("[pn] Wrapped code:", wrapped);
-
-      var prefixStr = prefix.join('\n').trim();
-      return prefixStr ? prefixStr + '\n' + wrapped : wrapped;
-    }
-
-    function play() {
+    async function play() {
       if (!engineReady) {
         setStatus('Samples still loading...', 'error');
         return;
@@ -852,9 +799,17 @@
       clearError();
       try {
         punchcard.start();
-        evaluate(wrapForPunchcard(code));
+
+        // Evaluate the ORIGINAL code — no wrapping needed.
+        // evaluate() returns the Pattern that strudel is now playing.
+        var pattern = await evaluate(code);
+        console.log("[pn] evaluate returned pattern:", pattern ? 'yes' : 'no');
+
         isPlaying = true;
         setStatus('Playing', 'playing');
+
+        // Query the pattern for piano roll data
+        punchcard.buildFromPattern(pattern);
       } catch (e) {
         showError(e.message || String(e));
         isPlaying = false;
