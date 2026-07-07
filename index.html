@@ -491,20 +491,32 @@
         var events = [];
 
         // Extract mini-notation strings: s("..."), n("..."), note("..."), sound("...")
-        function extractStrings(fn, src) {
-          var re = new RegExp(fn + '\\((["\'])([^]*?)\\1\\)', 'g');
-          var m;
-          while ((m = re.exec(src)) !== null) {
-            events.push({ fn: fn, raw: m[2] });
-          }
-          return events;
-        }
-        extractStrings('s');
-        extractStrings('n');
-        extractStrings('note');
-        extractStrings('sound');
+        var extract = function(fn) {
+                  var re = new RegExp(fn + '\\((["\'])([^]*?)\\1\\)', 'g');
+                  var m;
+                  while ((m = re.exec(code)) !== null) {
+                    events.push({ fn: fn, raw: m[2] });
+                  }
+                };
+                extract('s');
+                extract('n');
+                extract('note');
+                extract('sound');
 
         if (events.length === 0) return [];
+
+        // Note name resolver
+        var scaleMatch = code.match(/\.scale\(["']([^"']+)["']\)/);
+        var noteNames = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+        function resolveLabel(raw) {
+          if (/^[a-gA-G][#b]?-?[0-9]?$/.test(raw)) return raw;
+          if (/^-?\d+$/.test(raw)) {
+            var midi = parseInt(raw) + 60;
+            var oct = Math.floor(midi / 12) - 1;
+            return noteNames[midi % 12] + oct;
+          }
+          return raw;
+        }
 
         // Parse mini-notation into time-stamped events
         var result = [];
@@ -529,7 +541,7 @@
             parts.forEach(function(part) {
               part = part.trim();
               if (!part) return;
-              result.push({ time: time, label: part });
+              result.push({ time: time, label: resolveLabel(part) });
             });
 
             // Each token advances by 1 step, unless it's a sub-cycle (which we handled as chords)
