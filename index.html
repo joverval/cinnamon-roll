@@ -223,6 +223,19 @@
     }
 
     /* ── Controls ── */
+    .punchcard-wrap {
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+      flex-shrink: 0;
+      height: 130px;
+      overflow: hidden;
+    }
+    #punchcardCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
     .controls {
       display: flex;
       align-items: center;
@@ -383,6 +396,10 @@
         ></textarea>
       </div>
 
+      <div class="punchcard-wrap" id="punchcardWrap">
+        <canvas id="punchcardCanvas"></canvas>
+      </div>
+
       <div class="controls">
         <button class="btn btn-play" id="btnPlay">▶ Play</button>
         <button class="btn btn-stop" id="btnStop">⏹ Stop</button>
@@ -410,6 +427,8 @@
     const preloadList = document.getElementById('preloadList');
     const statusText = document.getElementById('statusText');
     const errorPanel = document.getElementById('errorPanel');
+    const punchcardCanvas = document.getElementById('punchcardCanvas');
+    const punchcardCtx = punchcardCanvas.getContext('2d');
 
     let isPlaying = false;
     let activePreload = null;
@@ -445,6 +464,151 @@
       errorPanel.textContent = '';
     }
 
+    /* ── Punchcard ── */
+    var punchcard = {
+      animId: null,
+      grid: [],       // 2D array [row][col] of intensity (0-1)
+      COLS: 60,       // time columns (60 frames = ~1 sec at 60fps)
+      NOTE_LO: 36,    // MIDI C2
+      NOTE_HI: 96,    // MIDI C7
+      ROWS: 60,       // 96 - 36
+
+      get analyser() {
+        try { return getAnalyserById ? getAnalyserById('punchcard') : null; } catch(e) { return null; }
+      },
+
+      get fftSize() {
+        var a = this.analyser;
+        return a ? a.fftSize : 256;
+      },
+
+      init: function() {
+        this.ROWS = this.NOTE_HI - this.NOTE_LO;
+        this.grid = [];
+        for (var r = 0; r < this.ROWS; r++) {
+          this.grid[r] = new Float32Array(this.COLS);
+        }
+        this.resize();
+      },
+
+      resize: function() {
+        var dpr = window.devicePixelRatio || 1;
+        var rect = punchcardCanvas.getBoundingClientRect();
+        punchcardCanvas.width = rect.width * dpr;
+        punchcardCanvas.height = rect.height * dpr;
+        punchcardCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      },
+
+      start: function() {
+        if (this.animId) return;
+        this.init();
+        var self = this;
+        var col = 0;
+
+        function frame() {
+          self.animId = requestAnimationFrame(frame);
+          col = (col + 1) % self.COLS;
+          self.sampleColumn(col);
+          self.draw(col);
+        }
+        frame();
+      },
+
+      stop: function() {
+        if (this.animId) {
+          cancelAnimationFrame(this.animId);
+          this.animId = null;
+        }
+        punchcardCtx.clearRect(0, 0, punchcardCanvas.width, punchcardCanvas.height);
+      },
+
+      sampleColumn: function(col) {
+        var a = this.analyser;
+        if (!a) return;
+
+        var fft = a.fftSize;
+        var data = new Uint8Array(fft);
+        a.getByteFrequencyData(data);
+
+        // Map FFT bins to MIDI notes and find peak per note
+        var ctx;
+        try { ctx = getAudioContext ? getAudioContext() : null; } catch(e) { ctx = null; }
+        var sr = ctx ? ctx.sampleRate : 44100;
+        var peaks = new Float32Array(this.ROWS);
+
+        for (var i = 0; i < fft; i++) {
+          var freq = (i * sr) / (fft * 2);
+          if (freq < 20 || freq > 8000) continue;
+          // MIDI note from frequency
+          var midi = freq === 0 ? 0 : 12 * Math.log2(freq / 440) + 69;
+          var noteIdx = Math.round(midi) - this.NOTE_LO;
+          if (noteIdx >= 0 && noteIdx < this.ROWS) {
+            var val = data[i] / 255;
+            if (val > peaks[noteIdx]) peaks[noteIdx] = val;
+          }
+        }
+
+        // Apply to grid column
+        for (var r = 0; r < this.ROWS; r++) {
+          this.grid[r][col] = Math.min(1, peaks[r] * 1.5);
+        }
+      },
+
+      draw: function(latestCol) {
+        var ctx = punchcardCtx;
+        var w = punchcardCanvas.width / (window.devicePixelRatio || 1);
+        var h = punchcardCanvas.height / (window.devicePixelRatio || 1);
+        var barW = w / this.COLS;
+        var rowH = h / this.ROWS;
+
+        // Dark background
+        ctx.fillStyle = '#1a1a1f';
+        ctx.fillRect(0, 0, w, h);
+
+        // Draw grid
+        for (var r = 0; r < this.ROWS; r++) {
+          var row = this.grid[r];
+          for (var c = 0; c < this.COLS; c++) {
+            var intensity = row[c];
+            if (intensity < 0.01) continue;
+
+            // Age: older columns get dimmer
+            var age = (c <= latestCol)
+              ? (latestCol - c) / this.COLS
+              : (this.COLS - c + latestCol) / this.COLS;
+            var alpha = intensity * (1 - age * 0.85);
+
+            if (alpha < 0.02) {
+              row[c] = 0;  // clear dead cells
+              continue;
+            }
+
+            // Color gradient: low notes warm, high notes cool
+            var t = r / (this.ROWS - 1);
+            var red   = Math.floor(255 * (1 - t));
+            var green = Math.floor(128 * Math.sin(t * Math.PI));
+            var blue  = Math.floor(255 * t);
+
+            ctx.fillStyle = 'rgba(' + red + ',' + green + ',' + blue + ',' + alpha.toFixed(2) + ')';
+            ctx.fillRect(c * barW, r * rowH, barW + 1, rowH + 1);
+          }
+        }
+
+        // Octave separator lines
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 0.5;
+        for (var midi = this.NOTE_LO; midi <= this.NOTE_HI; midi++) {
+          if (midi % 12 === 0) {
+            var y = (midi - this.NOTE_LO) * rowH;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
+          }
+        }
+      }
+    };
+
     /* ── Engine init ── */
     async function initEngine() {
       setStatus('Loading samples...');
@@ -475,15 +639,20 @@
         setStatus('Samples still loading...', 'error');
         return;
       }
-      const code = editor.value.trim();
+      var code = editor.value.trim();
       if (!code) return;
 
       clearError();
       try {
-        // evaluate() is global from @strudel/web
-        evaluate(code);
+        // Inject analyze so the punchcard gets audio data
+        var injectCode = code;
+        if (injectCode.indexOf('analyze(') === -1) {
+          injectCode = injectCode.replace(/\s*$/, '.analyze("punchcard")');
+        }
+        evaluate(injectCode);
         isPlaying = true;
         setStatus('Playing', 'playing');
+        punchcard.start();
       } catch (e) {
         showError(e.message || String(e));
         isPlaying = false;
@@ -491,11 +660,11 @@
     }
 
     function stop() {
-      // hush() via evaluate (same context that plays), plus direct call as backup
       try { evaluate('hush()'); } catch(e) {}
       try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
       isPlaying = false;
       setStatus('Stopped');
+      punchcard.stop();
     }
 
     btnPlay.addEventListener('click', play);
@@ -606,6 +775,11 @@
     initEngine();
     loadPreloads();
     handleUrlParams();
+
+    // Keep punchcard sized on window resize
+    window.addEventListener('resize', function() {
+      punchcard.resize();
+    });
 
     /* ── Auto-resize editor on window resize ── */
     // (textarea fills flex container, no manual resize needed)
