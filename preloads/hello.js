@@ -1,5 +1,4 @@
-// hello: a gentle starter pattern
-note("c3 eb3 g3 bb3")
+$: note("c3 e3 g3 b3")
   .s("triangle")
   .room(0.4)
   .delay(0.2)
