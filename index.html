@@ -451,7 +451,7 @@
       try {
         // initStrudel is global from @strudel/web script
         await initStrudel({
-          prebake: () => samples('samples/'),
+          prebake: () => samples('samples/strudel.json'),
         });
         engineReady = true;
         setStatus('Ready');

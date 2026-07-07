@@ -1,0 +1,102 @@
+{
+  "_base": "/cinnamon-roll/samples/",
+  "arpy": [
+    "arpy/arpy01.wav",
+    "arpy/arpy02.wav",
+    "arpy/arpy03.wav",
+    "arpy/arpy04.wav",
+    "arpy/arpy05.wav"
+  ],
+  "bd": [
+    "bd/BT0A0A7.wav",
+    "bd/BT0A0D0.wav",
+    "bd/BT0A0D3.wav",
+    "bd/BT0A0DA.wav",
+    "bd/BT0AAD0.wav"
+  ],
+  "casio": [
+    "casio/high.wav",
+    "casio/low.wav",
+    "casio/noise.wav"
+  ],
+  "cb": [
+    "cb/rytm-cb.wav"
+  ],
+  "cp": [
+    "cp/HANDCLP0.wav",
+    "cp/HANDCLPA.wav"
+  ],
+  "gtr": [
+    "gtr/0001_cleanC.wav",
+    "gtr/0002_ovrdC.wav",
+    "gtr/0003_distC.wav"
+  ],
+  "hc": [
+    "hc/HHCD0.wav",
+    "hc/HHCD2.wav",
+    "hc/HHCD4.wav",
+    "hc/HHCD6.wav",
+    "hc/HHCD8.wav"
+  ],
+  "hh": [
+    "hh/000_hh3closedhh.wav",
+    "hh/001_hh3crash.wav",
+    "hh/002_hh3hit1.wav",
+    "hh/003_hh3hit2.wav",
+    "hh/004_hh3hit3.wav"
+  ],
+  "jazz": [
+    "jazz/000_BD.wav",
+    "jazz/001_CB.wav",
+    "jazz/002_FX.wav",
+    "jazz/003_HH.wav",
+    "jazz/004_OH.wav"
+  ],
+  "juno": [
+    "juno/00_juno_raw_low.wav",
+    "juno/01_juno_raw_mid.wav",
+    "juno/02_juno_raw_high.wav",
+    "juno/03_juno_chorus_low.wav",
+    "juno/04_juno_chorus_mid.wav"
+  ],
+  "pad": [
+    "pad/alien-monolith-pad.wav",
+    "pad/angelpads.wav",
+    "pad/bellpad-harmonics.wav"
+  ],
+  "padlong": [
+    "padlong/atmospheric-abduction.wav"
+  ],
+  "sax": [
+    "sax/000_notes121a.wav",
+    "sax/001_notes121a2.wav",
+    "sax/002_notes121b.wav",
+    "sax/003_notes121bflat.wav",
+    "sax/004_notes121bflat2.wav"
+  ],
+  "sd": [
+    "sd/rytm-00-hard.wav",
+    "sd/rytm-01-classic.wav"
+  ],
+  "sitar": [
+    "sitar/000_d_maj_sitar_chorda.wav",
+    "sitar/001_d_maj_sitar_chordb.wav",
+    "sitar/002_d_maj_sitar_chordc.wav",
+    "sitar/003_d_maj_sitar_chordd.wav",
+    "sitar/004_d_maj_sitar_chorde.wav"
+  ],
+  "trump": [
+    "trump/000_tightstabb.wav",
+    "trump/001_tightstabblowoct.wav",
+    "trump/002_tightstabe.wav",
+    "trump/003_tightstabg.wav",
+    "trump/004_trumpfunk107a.wav"
+  ],
+  "wind": [
+    "wind/000_wind1.wav",
+    "wind/001_wind10.wav",
+    "wind/002_wind2.wav",
+    "wind/003_wind3.wav",
+    "wind/004_wind4.wav"
+  ]
+}
