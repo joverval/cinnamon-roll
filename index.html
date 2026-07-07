@@ -467,27 +467,14 @@
     /* ── Punchcard ── */
     var punchcard = {
       animId: null,
-      grid: [],       // 2D array [row][col] of intensity (0-1)
-      COLS: 60,       // time columns (60 frames = ~1 sec at 60fps)
-      NOTE_LO: 36,    // MIDI C2
-      NOTE_HI: 96,    // MIDI C7
-      ROWS: 60,       // 96 - 36
-
-      get analyser() {
-        try { return getAnalyserById ? getAnalyserById('punchcard') : null; } catch(e) { return null; }
-      },
-
-      get fftSize() {
-        var a = this.analyser;
-        return a ? a.fftSize : 256;
-      },
+      events: [],     // {time, row, label} — time in 0..1 (cycle fraction)
+      rows: [],       // unique row labels
+      startCycle: 0,
+      cycleLen: 1,    // in seconds
 
       init: function() {
-        this.ROWS = this.NOTE_HI - this.NOTE_LO;
-        this.grid = [];
-        for (var r = 0; r < this.ROWS; r++) {
-          this.grid[r] = new Float32Array(this.COLS);
-        }
+        this.events = [];
+        this.rows = [];
         this.resize();
       },
 
@@ -499,17 +486,92 @@
         punchcardCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       },
 
-      start: function() {
+      /** Parse user code into {time, label} events */
+      parse: function(code) {
+        var events = [];
+
+        // Extract mini-notation strings: s("..."), n("..."), note("..."), sound("...")
+        function extractStrings(fn, src) {
+          var re = new RegExp(fn + '\\((["\'])([^]*?)\\1\\)', 'g');
+          var m;
+          while ((m = re.exec(src)) !== null) {
+            events.push({ fn: fn, raw: m[2] });
+          }
+          return events;
+        }
+        extractStrings('s');
+        extractStrings('n');
+        extractStrings('note');
+        extractStrings('sound');
+
+        if (events.length === 0) return [];
+
+        // Parse mini-notation into time-stamped events
+        var result = [];
+        var self = this;
+
+        events.forEach(function(ev) {
+          var tokens = ev.raw.split(/\s+/);
+          var step = 0;
+          tokens.forEach(function(token) {
+            if (token === '~' || token === '') { step++; return; }
+            // Strip sub-cycles like [a,b] — treat as single step with chord
+            var label = token.replace(/[\[\]]/g, '');
+            // Handle @N suffixes
+            var atMatch = token.match(/@(\d+)/);
+            var div = atMatch ? parseInt(atMatch[1]) : 1;
+            label = label.replace(/@\d+/, '');
+
+            // For chords like [a,b,c], split into multiple events
+            var parts = label.split(/,|:/);
+            var time = step / Math.max(tokens.length, 1);
+
+            parts.forEach(function(part) {
+              part = part.trim();
+              if (!part) return;
+              result.push({ time: time, label: part });
+            });
+
+            // Each token advances by 1 step, unless it's a sub-cycle (which we handled as chords)
+            step++;
+            if (div > 1) {
+              // @N: repeat N times, each step is 1/N of the space
+            }
+          });
+        });
+
+        return result;
+      },
+
+      start: function(code) {
         if (this.animId) return;
         this.init();
-        var self = this;
-        var col = 0;
 
+        // Parse events from the code
+        this.events = this.parse(code);
+
+        // Build row index from unique labels
+        var seen = {};
+        this.rows = [];
+        var self = this;
+        (this.events || []).forEach(function(ev) {
+          if (!seen[ev.label]) {
+            seen[ev.label] = true;
+            self.rows.push(ev.label);
+          }
+        });
+        // Sort rows alphabetically (percussion low, melodic high)
+        this.rows.sort();
+
+        // Record cycle start
+        try { this.startCycle = getTime ? getTime() : 0; } catch(e) { this.startCycle = 0; }
+        try { this.cycleLen = cps ? (1 / (cps() || 1)) : 1; } catch(e) { this.cycleLen = 1; }
+        if (!isFinite(this.cycleLen) || this.cycleLen <= 0) this.cycleLen = 1;
+
+        var col = 0;
         function frame() {
           self.animId = requestAnimationFrame(frame);
-          col = (col + 1) % self.COLS;
-          self.sampleColumn(col);
-          self.draw(col);
+          self.draw();
         }
         frame();
       },
@@ -522,89 +584,93 @@
         punchcardCtx.clearRect(0, 0, punchcardCanvas.width, punchcardCanvas.height);
       },
 
-      sampleColumn: function(col) {
-        var a = this.analyser;
-        if (!a) return;
-
-        var fft = a.fftSize;
-        var data = new Uint8Array(fft);
-        a.getByteFrequencyData(data);
-
-        // Map FFT bins to MIDI notes and find peak per note
-        var ctx;
-        try { ctx = getAudioContext ? getAudioContext() : null; } catch(e) { ctx = null; }
-        var sr = ctx ? ctx.sampleRate : 44100;
-        var peaks = new Float32Array(this.ROWS);
-
-        for (var i = 0; i < fft; i++) {
-          var freq = (i * sr) / (fft * 2);
-          if (freq < 20 || freq > 8000) continue;
-          // MIDI note from frequency
-          var midi = freq === 0 ? 0 : 12 * Math.log2(freq / 440) + 69;
-          var noteIdx = Math.round(midi) - this.NOTE_LO;
-          if (noteIdx >= 0 && noteIdx < this.ROWS) {
-            var val = data[i] / 255;
-            if (val > peaks[noteIdx]) peaks[noteIdx] = val;
-          }
-        }
-
-        // Apply to grid column
-        for (var r = 0; r < this.ROWS; r++) {
-          this.grid[r][col] = Math.min(1, peaks[r] * 1.5);
+      getPlayhead: function() {
+        try {
+          var t = getTime ? getTime() : (performance.now() / 1000);
+          return ((t - this.startCycle) % this.cycleLen) / this.cycleLen;
+        } catch(e) {
+          return (performance.now() / 1000) % 1;
         }
       },
 
-      draw: function(latestCol) {
+      draw: function() {
         var ctx = punchcardCtx;
-        var w = punchcardCanvas.width / (window.devicePixelRatio || 1);
-        var h = punchcardCanvas.height / (window.devicePixelRatio || 1);
-        var barW = w / this.COLS;
-        var rowH = h / this.ROWS;
+        var dpr = window.devicePixelRatio || 1;
+        var w = punchcardCanvas.width / dpr;
+        var h = punchcardCanvas.height / dpr;
 
         // Dark background
         ctx.fillStyle = '#1a1a1f';
         ctx.fillRect(0, 0, w, h);
 
-        // Draw grid
-        for (var r = 0; r < this.ROWS; r++) {
-          var row = this.grid[r];
-          for (var c = 0; c < this.COLS; c++) {
-            var intensity = row[c];
-            if (intensity < 0.01) continue;
+        var nRows = Math.max(this.rows.length, 4);
+        var labelW = 60;
+        var gridW = w - labelW - 8;
+        var rowH = Math.min(28, h / nRows);
+        var gridH = nRows * rowH;
+        var offsetY = (h - gridH) / 2;
 
-            // Age: older columns get dimmer
-            var age = (c <= latestCol)
-              ? (latestCol - c) / this.COLS
-              : (this.COLS - c + latestCol) / this.COLS;
-            var alpha = intensity * (1 - age * 0.85);
+        var ph = this.getPlayhead();
+        var playheadX = labelW + 4 + ph * gridW;
 
-            if (alpha < 0.02) {
-              row[c] = 0;  // clear dead cells
-              continue;
-            }
+        // Draw rows
+        for (var r = 0; r < nRows; r++) {
+          var y = offsetY + r * rowH;
 
-            // Color gradient: low notes warm, high notes cool
-            var t = r / (this.ROWS - 1);
-            var red   = Math.floor(255 * (1 - t));
-            var green = Math.floor(128 * Math.sin(t * Math.PI));
-            var blue  = Math.floor(255 * t);
+          // Row background (alternating)
+          ctx.fillStyle = r % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)';
+          ctx.fillRect(labelW + 4, y, gridW, rowH);
 
-            ctx.fillStyle = 'rgba(' + red + ',' + green + ',' + blue + ',' + alpha.toFixed(2) + ')';
-            ctx.fillRect(c * barW, r * rowH, barW + 1, rowH + 1);
-          }
+          // Label
+          ctx.fillStyle = '#888899';
+          ctx.font = '11px ' + getComputedStyle(document.body).fontFamily.replace(/Inter/g, 'monospace');
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(this.rows[r] || '', labelW, y + rowH / 2);
+
+          // Note events on this row
+          var rowLabel = this.rows[r];
+          var self = this;
+          (this.events || []).forEach(function(ev) {
+            if (ev.label !== rowLabel) return;
+            var ex = labelW + 4 + ev.time * gridW;
+            var ew = Math.max(3, gridW / 80); // slightly wider than a thin line
+            var eh = rowH - 2;
+
+            // Dim if playhead hasn't reached it yet
+            var alpha = ev.time <= ph ? 0.75 : 0.2;
+            ctx.fillStyle = 'rgba(255,140,140,' + alpha + ')';
+            ctx.beginPath();
+            ctx.roundRect(ex, y + 1, ew, eh, 2);
+            ctx.fill();
+          });
+
+          // Row separator
+          ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(labelW + 4, y + rowH);
+          ctx.lineTo(labelW + 4 + gridW, y + rowH);
+          ctx.stroke();
         }
 
-        // Octave separator lines
-        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        // Playhead
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(playheadX, offsetY);
+        ctx.lineTo(playheadX, offsetY + gridH);
+        ctx.stroke();
+
+        // Beat markers (quarter-note divisions)
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
         ctx.lineWidth = 0.5;
-        for (var midi = this.NOTE_LO; midi <= this.NOTE_HI; midi++) {
-          if (midi % 12 === 0) {
-            var y = (midi - this.NOTE_LO) * rowH;
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(w, y);
-            ctx.stroke();
-          }
+        for (var beat = 0; beat <= 4; beat++) {
+          var bx = labelW + 4 + (beat / 4) * gridW;
+          ctx.beginPath();
+          ctx.moveTo(bx, offsetY);
+          ctx.lineTo(bx, offsetY + gridH);
+          ctx.stroke();
         }
       }
     };
@@ -644,15 +710,10 @@
 
       clearError();
       try {
-        // Inject analyze so the punchcard gets audio data
-        var injectCode = code;
-        if (injectCode.indexOf('analyze(') === -1) {
-          injectCode = injectCode.replace(/\s*$/, '.analyze("punchcard")');
-        }
-        evaluate(injectCode);
+        evaluate(code);
         isPlaying = true;
         setStatus('Playing', 'playing');
-        punchcard.start();
+        punchcard.start(code);
       } catch (e) {
         showError(e.message || String(e));
         isPlaying = false;
