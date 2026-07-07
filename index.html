@@ -610,40 +610,62 @@
         var gridH = nRows * rowH;
         var offsetY = (h - gridH) / 2;
 
-        var ph = this.getPlayhead();
-        var playheadX = labelW + 4 + ph * gridW;
+        var ph = this.getPlayhead();  // 0..1 position within current cycle
+        // Fixed playhead at 25% of grid width
+        var PLAYHEAD_X = labelW + 4 + gridW * 0.25;
+
+        // Clip to grid area
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(labelW + 4, offsetY, gridW, gridH);
+        ctx.clip();
 
         // Draw rows
         for (var r = 0; r < nRows; r++) {
           var y = offsetY + r * rowH;
 
-          // Row background (alternating)
+          // Row background
           ctx.fillStyle = r % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)';
           ctx.fillRect(labelW + 4, y, gridW, rowH);
 
           // Label
           ctx.fillStyle = '#888899';
-          ctx.font = '11px ' + getComputedStyle(document.body).fontFamily.replace(/Inter/g, 'monospace');
+          ctx.font = '11px monospace';
           ctx.textAlign = 'right';
           ctx.textBaseline = 'middle';
           ctx.fillText(this.rows[r] || '', labelW, y + rowH / 2);
 
-          // Note events on this row
+          // Note events — draw across multiple cycles
           var rowLabel = this.rows[r];
           var self = this;
-          (this.events || []).forEach(function(ev) {
-            if (ev.label !== rowLabel) return;
-            var ex = labelW + 4 + ev.time * gridW;
-            var ew = Math.max(3, gridW / 80); // slightly wider than a thin line
-            var eh = rowH - 2;
+          var CYCLES = 3; // show events across 3 cycles (past, current, future)
 
-            // Dim if playhead hasn't reached it yet
-            var alpha = ev.time <= ph ? 0.75 : 0.2;
-            ctx.fillStyle = 'rgba(255,140,140,' + alpha + ')';
-            ctx.beginPath();
-            ctx.roundRect(ex, y + 1, ew, eh, 2);
-            ctx.fill();
-          });
+          for (var cycle = -1; cycle < CYCLES - 1; cycle++) {
+            (this.events || []).forEach(function(ev) {
+              if (ev.label !== rowLabel) return;
+
+              // Event position relative to playhead
+              var relTime = ev.time - ph + cycle;
+              // Convert to pixel offset from playhead (1 cycle = full gridW)
+              var pixelOffset = relTime * gridW;
+              var ex = PLAYHEAD_X + pixelOffset;
+              var ew = Math.max(3, gridW / 80);
+              var eh = rowH - 2;
+
+              // Skip if completely outside grid
+              if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
+
+              // Alpha fades with distance from playhead
+              var dist = Math.abs(relTime);
+              var alpha = Math.max(0.08, 0.75 - dist * 0.5);
+              if (dist > 1.5) alpha = 0.05;
+
+              ctx.fillStyle = 'rgba(255,140,140,' + alpha.toFixed(2) + ')';
+              ctx.beginPath();
+              ctx.roundRect(ex, y + 1, ew, eh, 2);
+              ctx.fill();
+            });
+          }
 
           // Row separator
           ctx.strokeStyle = 'rgba(255,255,255,0.05)';
@@ -654,24 +676,41 @@
           ctx.stroke();
         }
 
-        // Playhead
-        ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+        ctx.restore();
+
+        // Playhead line (stationary)
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(playheadX, offsetY);
-        ctx.lineTo(playheadX, offsetY + gridH);
+        ctx.moveTo(PLAYHEAD_X, offsetY);
+        ctx.lineTo(PLAYHEAD_X, offsetY + gridH);
         ctx.stroke();
 
-        // Beat markers (quarter-note divisions)
-        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        // Playhead triangle on top
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.beginPath();
+        ctx.moveTo(PLAYHEAD_X - 5, offsetY - 1);
+        ctx.lineTo(PLAYHEAD_X + 5, offsetY - 1);
+        ctx.lineTo(PLAYHEAD_X, offsetY - 7);
+        ctx.closePath();
+        ctx.fill();
+
+        // Beat markers (scroll with grid)
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(labelW + 4, offsetY, gridW, gridH);
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
         ctx.lineWidth = 0.5;
-        for (var beat = 0; beat <= 4; beat++) {
-          var bx = labelW + 4 + (beat / 4) * gridW;
+        for (var b = -8; b <= 8; b++) {
+          var bx = PLAYHEAD_X + (b / 4 - ph) * gridW;
+          if (bx < labelW + 4 || bx > labelW + 4 + gridW) continue;
           ctx.beginPath();
           ctx.moveTo(bx, offsetY);
           ctx.lineTo(bx, offsetY + gridH);
           ctx.stroke();
         }
+        ctx.restore();
       }
     };
 
