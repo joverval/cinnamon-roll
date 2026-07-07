@@ -491,9 +491,9 @@
     }
 
     function stop() {
-      if (typeof hush !== 'undefined') {
-        hush();
-      }
+      // hush() via evaluate (same context that plays), plus direct call as backup
+      try { evaluate('hush()'); } catch(e) {}
+      try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
       isPlaying = false;
       setStatus('Stopped');
     }
