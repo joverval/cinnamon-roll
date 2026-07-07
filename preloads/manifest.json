@@ -8,5 +8,10 @@
     "name": "vocalization 1",
     "file": "vocalization-1.js",
     "description": "Melodic vocal-like sequence with punchcard"
+  },
+  {
+    "name": "vocalization 2",
+    "file": "vocalization-2.js",
+    "description": "Vocalization variant with different rhythm"
   }
 ]
