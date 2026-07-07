@@ -467,12 +467,13 @@
     /* ── Punchcard ── */
     var punchcard = {
       animId: null,
-      events: [],     // {time, row, label} — time in 0..1 (cycle fraction)
-      rows: [],       // unique row labels
-      startCycle: 0,
-      cycleLen: 1,    // in seconds
-      viewRow: 0,     // scroll offset for row view
-      targetRow: 0,   // desired row offset (lerped toward)
+      events: [],     // {time, label} — cycle time + note/sound name
+            rows: [],       // unique row labels
+            startCycle: 0,
+            cycleLen: 1,
+            viewRow: 0,
+            targetRow: 0,
+            _onNote: null,  // event handler ref
 
       init: function() {
         this.events = [];
@@ -487,116 +488,81 @@
         punchcardCanvas.height = rect.height * dpr;
         punchcardCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       },
+      /** Extract a display label from a hap value */
+            labelFromValue: function(v) {
+              if (!v || typeof v !== 'object') return null;
+              // Try common value fields
+              if (v.note) return v.note;
+              if (v.s) return v.s;     // sound name
+              if (v.n != null) {
+                // Numeric note — convert to name
+                var nn = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+                var midi = parseInt(v.n) + 60;
+                var oct = Math.floor(midi / 12) - 1;
+                return nn[midi % 12] + oct;
+              }
+              if (v.value != null) return String(v.value);
+              if (v.freq) return Math.round(12 * Math.log2(v.freq / 440) + 69) + '';
+              return null;
+            },
 
-      /** Parse user code into {time, label} events */
-      parse: function(code) {
-        var events = [];
+            start: function() {
+              if (this.animId) return;
+              this.events = [];
+              this.init();
 
-        // Extract mini-notation strings: s("..."), n("..."), note("..."), sound("...")
-        var extract = function(fn) {
-                  var re = new RegExp('\\b' + fn + '\\((["\'])([^]*?)\\1\\)', 'g');
-                  var m;
-                  while ((m = re.exec(code)) !== null) {
-                    events.push({ fn: fn, raw: m[2] });
-                  }
-                };
-                extract('s');
-                extract('n');
-                extract('note');
-                extract('sound');
+              // Listen for punchcard-note events from withValue hook
+              var self = this;
+              this._onNote = function(e) {
+                if (!e.detail || !e.detail.value) return;
+                var label = self.labelFromValue(e.detail.value);
+                if (!label) return;
 
-        if (events.length === 0) return [];
+                // Get cycle time
+                var t = e.detail.time || 0;
+                // Normalize to 0..1 within current cycle
+                var cycleFrac = (t % self.cycleLen) / self.cycleLen;
+                if (!isFinite(cycleFrac)) cycleFrac = 0;
 
-        // Note name resolver
-        var scaleMatch = code.match(/\.scale\(["']([^"']+)["']\)/);
-        var noteNames = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
-        function resolveLabel(raw) {
-          if (/^[a-gA-G][#b]?-?[0-9]?$/.test(raw)) return raw;
-          if (/^-?\d+$/.test(raw)) {
-            var midi = parseInt(raw) + 60;
-            var oct = Math.floor(midi / 12) - 1;
-            return noteNames[midi % 12] + oct;
-          }
-          return raw;
-        }
+                self.events.push({ time: cycleFrac, label: String(label) });
 
-        // Parse mini-notation into time-stamped events
-        var result = [];
-        var self = this;
+                // Track this row
+                if (self.rows.indexOf(label) === -1) {
+                  self.rows.push(label);
+                  self.rows.sort();
+                }
 
-        events.forEach(function(ev) {
-          var tokens = ev.raw.split(/\s+/);
-          var step = 0;
-          tokens.forEach(function(token) {
-            if (token === '~' || token === '') { step++; return; }
-            // Strip sub-cycles like [a,b] — treat as single step with chord
-            var label = token.replace(/[\[\]]/g, '');
-            // Handle @N suffixes
-            var atMatch = token.match(/@(\d+)/);
-            var div = atMatch ? parseInt(atMatch[1]) : 1;
-            label = label.replace(/@\d+/, '');
+                // Prune old events (keep last 200)
+                if (self.events.length > 200) {
+                  self.events = self.events.slice(-200);
+                }
+              };
+              document.addEventListener('pn', this._onNote);
 
-            // For chords like [a,b,c], split into multiple events
-            var parts = label.split(/,|:/);
-            var time = step / Math.max(tokens.length, 1);
+              // Start cycle timing
+              try { this.startCycle = getTime ? getTime() : 0; } catch(e) { this.startCycle = 0; }
+              try { this.cycleLen = cps ? (1 / (cps() || 1)) : 1; } catch(e) { this.cycleLen = 1; }
+              if (!isFinite(this.cycleLen) || this.cycleLen <= 0) this.cycleLen = 1;
 
-            parts.forEach(function(part) {
-              part = part.trim();
-              if (!part) return;
-              result.push({ time: time, label: resolveLabel(part) });
-            });
+              var col = 0;
+              function frame() {
+                self.animId = requestAnimationFrame(frame);
+                self.draw();
+              }
+              frame();
+            },
 
-            // Each token advances by 1 step, unless it's a sub-cycle (which we handled as chords)
-            step++;
-            if (div > 1) {
-              // @N: repeat N times, each step is 1/N of the space
-            }
-          });
-        });
-
-        return result;
-      },
-
-      start: function(code) {
-        if (this.animId) return;
-        this.init();
-
-        // Parse events from the code
-        this.events = this.parse(code);
-
-        // Build row index from unique labels
-        var seen = {};
-        this.rows = [];
-        var self = this;
-        (this.events || []).forEach(function(ev) {
-          if (!seen[ev.label]) {
-            seen[ev.label] = true;
-            self.rows.push(ev.label);
-          }
-        });
-        // Sort rows alphabetically (percussion low, melodic high)
-        this.rows.sort();
-
-        // Record cycle start
-        try { this.startCycle = getTime ? getTime() : 0; } catch(e) { this.startCycle = 0; }
-        try { this.cycleLen = cps ? (1 / (cps() || 1)) : 1; } catch(e) { this.cycleLen = 1; }
-        if (!isFinite(this.cycleLen) || this.cycleLen <= 0) this.cycleLen = 1;
-
-        var col = 0;
-        function frame() {
-          self.animId = requestAnimationFrame(frame);
-          self.draw();
-        }
-        frame();
-      },
-
-      stop: function() {
-        if (this.animId) {
-          cancelAnimationFrame(this.animId);
-          this.animId = null;
-        }
-        punchcardCtx.clearRect(0, 0, punchcardCanvas.width, punchcardCanvas.height);
-      },
+            stop: function() {
+              if (this.animId) {
+                cancelAnimationFrame(this.animId);
+                this.animId = null;
+              }
+              if (this._onNote) {
+                document.removeEventListener('pn', this._onNote);
+                this._onNote = null;
+              }
+              punchcardCtx.clearRect(0, 0, punchcardCanvas.width, punchcardCanvas.height);
+            },
 
       getPlayhead: function() {
         try {
@@ -768,6 +734,27 @@
     }
 
     /* ── Play / Stop ── */
+    function wrapForPunchcard(code) {
+      // Find the last expression and wrap it with withValue to capture note events
+      var lines = code.split('\n');
+      // Trim trailing empty lines
+      while (lines.length && !lines[lines.length-1].trim()) lines.pop();
+      if (!lines.length) return code;
+      var last = lines[lines.length-1];
+      var prefix = lines.slice(0, -1).join('\n');
+      // Remove trailing semicolons from last line
+      last = last.replace(/;+\s*$/, '');
+      var wrapped = last + '.withValue(function(v){' +
+        'try{' +
+          'document.dispatchEvent(new CustomEvent("pn",{' +
+            'detail:{value:v,time:typeof getTime!=="undefined"?getTime():0}' +
+          '}))' +
+        '}catch(e){}' +
+        'return v' +
+      '})';
+      return prefix ? prefix + '\n' + wrapped : wrapped;
+    }
+
     function play() {
       if (!engineReady) {
         setStatus('Samples still loading...', 'error');
@@ -778,10 +765,10 @@
 
       clearError();
       try {
-        evaluate(code);
+        evaluate(wrapForPunchcard(code));
         isPlaying = true;
         setStatus('Playing', 'playing');
-        punchcard.start(code);
+        punchcard.start();
       } catch (e) {
         showError(e.message || String(e));
         isPlaying = false;
