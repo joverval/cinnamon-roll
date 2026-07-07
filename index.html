@@ -494,7 +494,7 @@
 
         // Extract mini-notation strings: s("..."), n("..."), note("..."), sound("...")
         var extract = function(fn) {
-                  var re = new RegExp(fn + '\\((["\'])([^]*?)\\1\\)', 'g');
+                  var re = new RegExp('\\b' + fn + '\\((["\'])([^]*?)\\1\\)', 'g');
                   var m;
                   while ((m = re.exec(code)) !== null) {
                     events.push({ fn: fn, raw: m[2] });
