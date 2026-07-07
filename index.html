@@ -488,18 +488,25 @@
         punchcardCanvas.height = rect.height * dpr;
         punchcardCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       },
-      /** Extract a display label from a hap value */
+      /** Extract a display label from a hap value.
+       *  Handles: strings ("bd"), numbers (note midi), objects ({s:"bd"}, {note:"C4"}, {n:0}) */
             labelFromValue: function(v) {
-              if (!v || typeof v !== 'object') return null;
-              // Try common value fields
-              if (v.note) return v.note;
-              if (v.s) return v.s;     // sound name
+              if (v == null) return null;
+              if (typeof v === 'string') return v;
+              if (typeof v === 'number') {
+                var nn = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+                var midi = Math.round(v) + 60;
+                var oct = Math.floor(midi / 12) - 1;
+                return nn[((midi % 12) + 12) % 12] + oct;
+              }
+              if (typeof v !== 'object') return null;
+              if (v.note) return String(v.note);
+              if (v.s) return String(v.s);
               if (v.n != null) {
-                // Numeric note — convert to name
                 var nn = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
                 var midi = parseInt(v.n) + 60;
                 var oct = Math.floor(midi / 12) - 1;
-                return nn[midi % 12] + oct;
+                return nn[((midi % 12) + 12) % 12] + oct;
               }
               if (v.value != null) return String(v.value);
               if (v.freq) return Math.round(12 * Math.log2(v.freq / 440) + 69) + '';
@@ -509,12 +516,13 @@
             start: function() {
               if (this.animId) return;
               this.events = [];
+              this._seen = {};  // dedup key -> true
               this.init();
 
               // Listen for punchcard-note events from withValue hook
               var self = this;
               this._onNote = function(e) {
-                if (!e.detail || !e.detail.value) return;
+                if (!e.detail || e.detail.value == null) return;
                 var label = self.labelFromValue(e.detail.value);
                 if (!label) return;
 
@@ -523,6 +531,11 @@
                 // Normalize to 0..1 within current cycle
                 var cycleFrac = (t % self.cycleLen) / self.cycleLen;
                 if (!isFinite(cycleFrac)) cycleFrac = 0;
+
+                // Deduplicate: same label at roughly same time position
+                var dedupKey = label + '_' + (Math.round(cycleFrac * 1000) / 1000);
+                if (self._seen[dedupKey]) return;
+                self._seen[dedupKey] = true;
 
                 self.events.push({ time: cycleFrac, label: String(label) });
 
@@ -574,6 +587,12 @@
       },
 
       draw: function() {
+        // Refresh cycle length in case cps changed
+        try {
+          var cl = cps ? (1 / (cps() || 1)) : 1;
+          if (isFinite(cl) && cl > 0) this.cycleLen = cl;
+        } catch(e) {}
+
         var ctx = punchcardCtx;
         var dpr = window.devicePixelRatio || 1;
         var w = punchcardCanvas.width / dpr;
@@ -765,10 +784,10 @@
 
       clearError();
       try {
+        punchcard.start();
         evaluate(wrapForPunchcard(code));
         isPlaying = true;
         setStatus('Playing', 'playing');
-        punchcard.start();
       } catch (e) {
         showError(e.message || String(e));
         isPlaying = false;
