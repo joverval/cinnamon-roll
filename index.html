@@ -753,25 +753,85 @@
     }
 
     /* ── Play / Stop ── */
+
+    /**
+     * Detect if a line looks like a strudel pattern expression.
+     * Returns: true = pattern starter, null = chain continuation, false = not a pattern
+     */
+    function looksLikePattern(line) {
+      if (/^\s*\./.test(line)) return null;     // chain continuation
+      var t = line.trim().replace(/;+\s*$/, '');
+      if (!t) return false;
+
+      // Strudel function starters that produce patterns
+      if (/^(s|note|n|sound|h|stack|pure|silence|sequence|seqPLoop|fastcat|cat|timecat|randcat|choose|chooseCycles|rand|irand|perlin|cosine|sine|square|saw|tri|wchoose|wchooseCycles|chooseWith|chooseIn|chooseInWith|signal)\b/.test(t)) return true;
+
+      // String literal (mini syntax — strudel auto-coerces)
+      if (/^["']/.test(t)) return true;
+
+      // Pure number (coerced to constant pattern)
+      if (/^-?\d+(\.\d+)?$/.test(t)) return true;
+
+      return false;
+    }
+
     function wrapForPunchcard(code) {
-      // Find the last expression and wrap it with withValue to capture note events
       var lines = code.split('\n');
       // Trim trailing empty lines
       while (lines.length && !lines[lines.length-1].trim()) lines.pop();
       if (!lines.length) return code;
-      var last = lines[lines.length-1];
-      var prefix = lines.slice(0, -1).join('\n');
-      // Remove trailing semicolons from last line
-      last = last.replace(/;+\s*$/, '');
-      var wrapped = last + '.withValue(function(v){' +
+
+      // Find the last pattern expression (search backward from end).
+      // A pattern may span multiple lines via chain continuations (.fast, .note, etc.)
+      var patternStart = -1, patternEnd = -1;
+      for (var i = lines.length - 1; i >= 0; i--) {
+        var line = lines[i];
+        if (!line.trim()) continue;
+        var kind = looksLikePattern(line);
+        if (kind === null) continue;   // chain — keep searching for the start
+        if (kind === true) {
+          patternStart = i;
+          patternEnd = i;
+          // Collect chain continuation lines after the start (.fast, .note, etc.)
+          // Skip empty lines but stop at the first non-empty, non-chain line
+          for (var j = i + 1; j < lines.length; j++) {
+            if (!lines[j].trim()) continue;
+            if (/^\s*\./.test(lines[j])) {
+              patternEnd = j;
+            } else {
+              break;
+            }
+          }
+          break;
+        }
+        // kind === false — not a pattern (function call, assignment, etc.)
+      }
+
+      // No pattern found — return code unchanged (punchcard will have no data)
+      if (patternStart === -1) return code;
+
+      // Build full pattern expression (may be multi-line)
+      var patternExpr = lines.slice(patternStart, patternEnd + 1).join('\n');
+      patternExpr = patternExpr.replace(/;+\s*$/, '');
+
+      // All non-pattern lines go into prefix (executed before the pattern)
+      var prefix = [];
+      for (var m = 0; m < lines.length; m++) {
+        if (m < patternStart || m > patternEnd) prefix.push(lines[m]);
+      }
+
+      // Wrap pattern with .onTrigger() which fires once per audio trigger
+      // — cleaner than .withValue() since it fires at audio time, not query time
+      var wrapped = patternExpr + '.onTrigger(function(hap){' +
         'try{' +
           'document.dispatchEvent(new CustomEvent("pn",{' +
-            'detail:{value:v,time:typeof getTime!=="undefined"?getTime():0}' +
+            'detail:{value:hap.value,time:typeof getTime!=="undefined"?getTime():0}' +
           '}))' +
         '}catch(e){}' +
-        'return v' +
       '})';
-      return prefix ? prefix + '\n' + wrapped : wrapped;
+
+      var prefixStr = prefix.join('\n').trim();
+      return prefixStr ? prefixStr + '\n' + wrapped : wrapped;
     }
 
     function play() {
