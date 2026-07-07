@@ -519,11 +519,16 @@
               this._seen = {};  // dedup key -> true
               this.init();
 
-              // Listen for punchcard-note events from withValue hook
+              // Listen for punchcard-note events from onTrigger hook
               var self = this;
               this._onNote = function(e) {
-                if (!e.detail || e.detail.value == null) return;
+                console.log("[pn] handler event:", e.detail);
+                if (!e.detail || e.detail.value == null) {
+                  console.log("[pn] handler: no detail/value");
+                  return;
+                }
                 var label = self.labelFromValue(e.detail.value);
+                console.log("[pn] handler: labelFromValue ->", label, "from value:", e.detail.value);
                 if (!label) return;
 
                 // Get cycle time
@@ -821,14 +826,16 @@
       }
 
       // Wrap pattern with .onTrigger() which fires once per audio trigger
-      // — cleaner than .withValue() since it fires at audio time, not query time
       var wrapped = patternExpr + '.onTrigger(function(hap){' +
         'try{' +
+          'console.log("[pn] trigger", typeof hap, hap && JSON.stringify(hap.value));' +
           'document.dispatchEvent(new CustomEvent("pn",{' +
-            'detail:{value:hap.value,time:typeof getTime!=="undefined"?getTime():0}' +
+            'detail:{value: hap && hap.value ? hap.value : hap, time: typeof getTime!=="undefined" ? getTime() : 0}' +
           '}))' +
-        '}catch(e){}' +
+        '}catch(e){console.error("[pn] trigger error:", e)}' +
       '})';
+
+      console.log("[pn] Wrapped code:", wrapped);
 
       var prefixStr = prefix.join('\n').trim();
       return prefixStr ? prefixStr + '\n' + wrapped : wrapped;
