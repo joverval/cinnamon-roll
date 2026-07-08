@@ -605,13 +605,9 @@
 
     clearError();
     try {
-      // Only visualize if code contains ._punchcard(...) — strip it before
-      // evaluating since it's a client-side hint, not a real Strudel function.
-      var shouldVisualize = /\._punchcard\s*\(/.test(code);
-      var cleanCode = shouldVisualize
-        ? code.replace(/\._punchcard\s*\([^)]*\)/g, '')
-        : code;
-
+      // .punchcard() and .pianoroll() are real Strudel visual functions.
+      // Detect them to trigger our custom piano roll alongside Strudel's own visuals.
+      var shouldVisualize = /\._?(punchcard|pianoroll)\s*\(/.test(code);
       if (shouldVisualize) {
         punchcard.start();
       } else {
@@ -630,7 +626,7 @@
       // Bake cps reset into the evaluated code so setcps() and the pattern
       // run atomically — avoids the cyclist restarting between calls and
       // ticking forward before the pattern starts.
-      var fullCode = 'setcps(' + defaultCps + ');\n' + cleanCode;
+      var fullCode = 'setcps(' + defaultCps + ');\n' + code;
       var evalPattern = await evaluate(fullCode);
 
       var pattern = null;
