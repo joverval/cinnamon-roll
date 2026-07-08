@@ -597,8 +597,8 @@
               if (!pattern || typeof pattern.queryArc !== 'function') return;
 
               try {
-                // Query 1 cycle to get the pattern structure
-                var haps = pattern.queryArc(0, 8); // Query 8 cycles to capture evolution
+                // Query 32 cycles to capture pattern evolution (e.g., .add() across many cycles)
+                var haps = pattern.queryArc(0, 32);
 
                 this.events = [];
                 this.rows = [];
@@ -760,20 +760,18 @@
         // Auto-scroll to follow notes in visible window
         if (this.events && this.events.length > 0) {
           var self = this;
-          // Find events in the visible time window (current playhead + next 0.5 cycles)
+          // Get current cycle (playhead is in cycle units)
+          var currentCycle = Math.floor(ph);
           var windowEnd = ph + 0.5;
+          
+          // Find events in the current cycle or slightly ahead
           var visibleEvents = this.events.filter(function(ev) {
-            var timeInCycle = ev.time % 1;
-            // Handle wrap-around at cycle boundary
-            if (windowEnd > 1) {
-              return timeInCycle >= ph || timeInCycle < (windowEnd - 1);
-            } else {
-              return timeInCycle >= ph && timeInCycle < windowEnd;
-            }
+            var evCycle = Math.floor(ev.time);
+            return evCycle === currentCycle;
           });
           
           if (visibleEvents.length > 0) {
-            // Find min/max MIDI of visible events
+            // Find min/max MIDI of events in this cycle
             var minMidi = Infinity, maxMidi = -Infinity;
             visibleEvents.forEach(function(ev) {
               var midi = self.noteToMidi(ev.label);
@@ -798,12 +796,16 @@
               var octavesToShow = 8; // Always show 8 notes
               var centerRow = topRow + Math.floor(rangeSpan / 2);
               
-              // Calculate scroll position to center the range in the visible window
-              var targetRow = Math.max(0, Math.min(nRows - octavesToShow, centerRow - Math.floor(octavesToShow / 2)));
-              var targetScroll = targetRow * rowH;
+              // Calculate scroll offset to center the range
+              var rowsToShow = octavesToShow; // Number of actual note rows visible
+              var totalVisibleHeight = rowsToShow * rowH;
+              var viewportCenterY = visibleHeight / 2;
               
-              // Smooth scroll interpolation
-              this.scrollY += (targetScroll - this.scrollY) * 0.12;
+              // Center vertically: the range should be centered in the viewport
+              var targetScrollY = (centerRow * rowH) - viewportCenterY + (totalVisibleHeight / 2);
+              
+              // Smooth scroll towards target
+              this.scrollY += (targetScrollY - this.scrollY) * 0.08;
             }
           }
         }
