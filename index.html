@@ -1068,16 +1068,11 @@
       try {
         punchcard.start();
 
-        // Reset tempo to default (moved from stop(); setcps restarts cyclist otherwise)
-        try {
-          if (typeof setcps === 'function') {
-            setcps(defaultCps);
-          } else {
-            evaluate('setcps(' + defaultCps + ')');
-          }
-        } catch (e) {}
-
-        var evalPattern = await evaluate(code);
+        // Bake cps reset into the evaluated code so setcps() and the pattern
+        // run atomically — avoids the cyclist restarting between calls and
+        // ticking forward before the pattern starts.
+        var fullCode = 'setcps(' + defaultCps + ');\n' + code;
+        var evalPattern = await evaluate(fullCode);
         console.log('[play] scheduler state after evaluate:', schedulerDebug());
 
         var pattern = null;
