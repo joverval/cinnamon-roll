@@ -572,17 +572,7 @@
 
             /** Initialize scroll event listeners. */
             initScroll: function() {
-              var self = this;
-              var canvas = document.getElementById('punchcardCanvas');
-              
-              // Mouse wheel scroll
-              canvas.addEventListener('wheel', function(e) {
-                e.preventDefault();
-                self.scrollY += e.deltaY * 0.5;
-                // Clamp scroll to valid range
-                var maxScroll = Math.max(0, self.totalHeight - self.visibleHeight);
-                self.scrollY = Math.max(0, Math.min(maxScroll, self.scrollY));
-              });
+              // Manual scroll disabled; octave tracking is automatic
             },
 
             start: function() {
@@ -795,8 +785,24 @@
               }
             });
             if (minMidi !== Infinity) {
-              var centerMidi = (minMidi + maxMidi) / 2;
-              targetOctave = Math.round(centerMidi / 12) - 1;
+              // Pick the octave where MOST notes are active (modal octave)
+              var octaveCounts = {};
+              visibleEvents.forEach(function(ev) {
+                var midi = self.noteToMidi(ev.label);
+                if (midi !== null) {
+                  var oct = Math.floor(midi / 12) - 1;
+                  octaveCounts[oct] = (octaveCounts[oct] || 0) + 1;
+                }
+              });
+              var bestOctave = targetOctave;
+              var bestCount = 0;
+              for (var o in octaveCounts) {
+                if (octaveCounts[o] > bestCount) {
+                  bestCount = octaveCounts[o];
+                  bestOctave = parseInt(o);
+                }
+              }
+              targetOctave = bestOctave;
             }
           }
         }
