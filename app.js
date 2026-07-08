@@ -53,7 +53,7 @@
   }
 
   /* ── Punchcard ── */
-  var punchcard = {
+  var punchcard = window.punchcard = {
     animId: null,
     events: [],     // {time, label} — cycle time + note/sound name
           rows: [],       // unique row labels
