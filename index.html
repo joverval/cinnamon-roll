@@ -835,14 +835,25 @@
       try {
         punchcard.start();
 
-        // evaluate() may return only the last pattern in multiline code.
-        // The repl stores the full stacked (playing) pattern in repl.pattern.
-        await evaluate(code);
-        var pattern = (repl && repl.pattern) || null;
-        if (!pattern && repl && typeof repl.getPattern === 'function') {
+        // evaluate() returns a pattern, but may only be the last line in multiline code.
+        // Check multiple sources for the full playing pattern:
+        var evalPattern = await evaluate(code);
+        console.log('[pn] evaluate() returned:', evalPattern ? 'pattern' : typeof evalPattern);
+        console.log('[pn] repl object:', repl ? Object.keys(repl) : 'null');
+        
+        var pattern = null;
+        if (repl && repl.pattern) {
+          pattern = repl.pattern;
+          console.log('[pn] pattern source: repl.pattern');
+        } else if (repl && typeof repl.getPattern === 'function') {
           pattern = repl.getPattern();
+          console.log('[pn] pattern source: repl.getPattern()');
+        } else if (evalPattern && typeof evalPattern.queryArc === 'function') {
+          pattern = evalPattern;
+          console.log('[pn] pattern source: evaluate() return value');
         }
-        console.log('[pn] pattern source:', pattern ? 'repl.pattern' : 'none');
+        
+        console.log('[pn] final pattern:', pattern ? 'found' : 'none');
 
         isPlaying = true;
         isPaused = false;
