@@ -616,7 +616,6 @@
                   if (!hap.hasOnset || !hap.hasOnset()) return;
 
                   var label = self.labelFromValue(hap.value);
-                  console.log('[pn] DEBUG: hap.value =', hap.value, '→ label =', label);
                   if (!label) return;
 
                   // Get absolute time position (across cycles)
@@ -759,6 +758,14 @@
         // Dark background
         ctx.fillStyle = '#1a1a1f';
         ctx.fillRect(0, 0, w, h);
+
+        // Per-cycle scheduler debug (once per cycle change)
+        var nowCycle = -1;
+        try { var gt = getTime ? getTime() : 0; nowCycle = typeof gt.floor === 'function' ? Number(gt.floor()) : Math.floor(Number(gt)); } catch(e) {}
+        if (nowCycle !== this._lastCycle) {
+          this._lastCycle = nowCycle;
+          console.log('[cycle ' + nowCycle + ']', schedulerDebug());
+        }
 
         if (!this.events || this.events.length === 0) return;
 
@@ -1033,6 +1040,27 @@
     /* Piano roll: evaluate() returns the Pattern; we queryArc() it directly to get hap events.
      * No code wrapping, no hooks, no CustomEvents needed. */
 
+    /* ── Scheduler debug helper ── */
+    function schedulerDebug() {
+      if (!repl) return 'repl=null';
+      var s = repl.scheduler;
+      if (!s) return 'scheduler=null';
+      var t, cycle, phase;
+      try { t = getTime ? getTime() : null; } catch(e) { t = null; }
+      if (t && typeof t.floor === 'function') {
+        cycle = Number(t.floor());
+        phase = Number(t.sub(t.floor()));
+      } else if (t !== null) {
+        cycle = Math.floor(t);
+        phase = t - cycle;
+      } else {
+        cycle = '?'; phase = '?';
+      }
+      return 'cycle=' + cycle + ' phase=' + (typeof phase === 'number' ? phase.toFixed(3) : phase) +
+        ' startTime=' + (s.startTime ? Number(s.startTime).toFixed(1) : s.startTime) +
+        ' cps=' + (typeof cps === 'function' ? cps().toFixed(2) : '?');
+    }
+
     async function play() {
       if (!engineReady) {
         setStatus('Samples still loading...', 'error');
@@ -1048,8 +1076,7 @@
         // evaluate() returns a pattern, but may only be the last line in multiline code.
         // Check multiple sources for the full playing pattern:
         var evalPattern = await evaluate(code);
-        console.log('[pn] evaluate() returned:', evalPattern ? 'pattern' : typeof evalPattern);
-        console.log('[pn] repl object:', repl ? Object.keys(repl) : 'null');
+        console.log('[play] scheduler state after evaluate:', schedulerDebug());
         
         var pattern = null;
         if (repl && repl.pattern) {
@@ -1103,6 +1130,7 @@
         }
         repl.scheduler.startTime = undefined;
       }
+      console.log('[stop] scheduler state after stop:', schedulerDebug());
       
       // Reset tempo back to the default (setcps mutates global scheduler state)
       try {
