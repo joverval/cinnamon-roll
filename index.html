@@ -1068,6 +1068,16 @@
       try {
         punchcard.start();
 
+        // scheduler.start() sets lastTick but NOT lastBegin, so lastBegin
+        // persists from initEngine time and cycles accumulate across stops.
+        // Reset it to the current audio clock so cycle = cps*(now-now)+0 = 0.
+        if (repl && repl.scheduler && repl.scheduler.clock) {
+          try {
+            repl.scheduler.lastBegin = repl.scheduler.clock.now();
+            console.log('[play] reset lastBegin to clock.now()');
+          } catch(e) {}
+        }
+
         // Bake cps reset into the evaluated code so setcps() and the pattern
         // run atomically — avoids the cyclist restarting between calls and
         // ticking forward before the pattern starts.
@@ -1109,9 +1119,8 @@
     }
 
     function stop() {
-      // Full stop: silence audio, kill scheduler.
-      // Tempo reset moved to play() to avoid restarting the cyclist.
-      try { evaluate('hush()'); } catch(e) {}
+      // Full stop: silence audio via direct hush(), then kill scheduler.
+      // (No async evaluate() — it would restart the cyclist after our stop code.)
       try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
       
       // Stop the scheduler and zero the cycle counter so next start = cycle 0
@@ -1253,7 +1262,7 @@
     // Report ready
     console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
       'color:#ff8a8a;font-weight:bold', 'color:#888');
-    console.log('[build] 50bc08e-z — zero num_cycles in stop() before next play');
+    console.log('[build] 188-lb2 — lastBegin reset + no async evaluate in stop');
   })();
   </script>
 </body>
