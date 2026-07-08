@@ -831,18 +831,24 @@
         var totalHeight = cumY; // should be ~2h
         var visibleHeight = h;
 
-        // scrollY slides between octaves: fracOctave goes 0→1 as we transition
+        // scrollY slides between octaves: fracOctave 0→1 scrolls from upper to lower octave
+        // Layout: octaveBase+1 (higher, on top) then octaveBase (lower, below)
+        // scrollY=0 shows upper octave, scrollY=h shows lower octave
         var fracOctave = this.displayOctave - octaveBase;
-        this.scrollY = fracOctave * h;
+        this.scrollY = (1 - fracOctave) * h;
 
         // Store for scroll clamping
         this.totalHeight = totalHeight;
         this.visibleHeight = visibleHeight;
+        // Clamp scrollY
+        var maxScroll = Math.max(0, totalHeight - visibleHeight);
+        this.scrollY = Math.max(0, Math.min(maxScroll, this.scrollY));
 
         // Debug
         if (!this._lastDrawLog || performance.now() - this._lastDrawLog > 2000) {
           console.log('[pn] DRAW: octaveBase=' + octaveBase + ' displayOctave=' + this.displayOctave.toFixed(2) +
-            ' targetOctave=' + targetOctave + ' allRows=' + allRows.slice(0,12).join(',') + '...');
+            ' targetOctave=' + targetOctave + ' scrollY=' + this.scrollY.toFixed(0) +
+            ' allRows=' + allRows.slice(0,12).join(',') + '...');
           this._lastDrawLog = performance.now();
         }
 
