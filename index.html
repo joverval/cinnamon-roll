@@ -785,19 +785,20 @@
             
             if (minMidi !== Infinity && maxMidi !== -Infinity) {
               // Find row indices for the highest and lowest notes
-              var topRow = nRows - 1, bottomRow = 0;
+              // allRows is ordered high to low, so row 0 is highest, nRows-1 is lowest
+              var topRow = 0, bottomRow = nRows - 1;
               for (var r = 0; r < nRows; r++) {
                 var midi = this.noteToMidi(allRows[r]);
                 if (midi === maxMidi) topRow = r;
                 if (midi === minMidi) bottomRow = r;
               }
               
-              // Center the view to show the range (with some padding)
+              // Calculate the center of the range
               var rangeSpan = bottomRow - topRow + 1;
               var octavesToShow = 8; // Always show 8 notes
               var centerRow = topRow + Math.floor(rangeSpan / 2);
               
-              // Calculate scroll position to center the range
+              // Calculate scroll position to center the range in the visible window
               var targetRow = Math.max(0, Math.min(nRows - octavesToShow, centerRow - Math.floor(octavesToShow / 2)));
               var targetScroll = targetRow * rowH;
               
