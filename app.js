@@ -605,7 +605,13 @@
 
     clearError();
     try {
-      punchcard.start();
+      // Only visualize if code explicitly opts in
+      var shouldVisualize = /\b(pianoroll|punchcard)\b/.test(code);
+      if (shouldVisualize) {
+        punchcard.start();
+      } else {
+        punchcard.stop();
+      }
 
       // scheduler.start() sets lastTick but NOT lastBegin, so lastBegin
       // persists from initEngine time and cycles accumulate across stops.
@@ -635,7 +641,7 @@
       isPaused = false;
       setStatus('Playing', 'playing');
 
-      if (pattern) punchcard.buildFromPattern(pattern);
+      if (pattern && shouldVisualize) punchcard.buildFromPattern(pattern);
     } catch (e) {
       showError(e.message || String(e));
       isPlaying = false;
