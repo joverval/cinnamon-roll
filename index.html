@@ -757,21 +757,25 @@
         var ph = this.getPlayhead();
         var PLAYHEAD_X = labelW + 4;
         
-        // Auto-scroll to follow upcoming notes in current cycle
+        // Auto-scroll to follow notes in visible window
         if (this.events && this.events.length > 0) {
           var self = this;
-          // Find events near the playhead (within next 0.15 cycles)
-          var upcomingEvents = this.events.filter(function(ev) {
+          // Find events in the visible time window (current playhead + next 0.5 cycles)
+          var windowEnd = ph + 0.5;
+          var visibleEvents = this.events.filter(function(ev) {
             var timeInCycle = ev.time % 1;
-            var relTime = timeInCycle - ph;
-            if (relTime < 0) relTime += 1;
-            return relTime >= 0 && relTime < 0.15;
+            // Handle wrap-around at cycle boundary
+            if (windowEnd > 1) {
+              return timeInCycle >= ph || timeInCycle < (windowEnd - 1);
+            } else {
+              return timeInCycle >= ph && timeInCycle < windowEnd;
+            }
           });
           
-          if (upcomingEvents.length > 0) {
-            // Find min/max MIDI of upcoming events
+          if (visibleEvents.length > 0) {
+            // Find min/max MIDI of visible events
             var minMidi = Infinity, maxMidi = -Infinity;
-            upcomingEvents.forEach(function(ev) {
+            visibleEvents.forEach(function(ev) {
               var midi = self.noteToMidi(ev.label);
               if (midi !== null) {
                 if (midi < minMidi) minMidi = midi;
@@ -779,23 +783,26 @@
               }
             });
             
-            if (minMidi !== Infinity) {
-              // Find which row index contains the highest note (minMidi)
-              var targetRow = -1;
+            if (minMidi !== Infinity && maxMidi !== -Infinity) {
+              // Find row indices for the highest and lowest notes
+              var topRow = nRows - 1, bottomRow = 0;
               for (var r = 0; r < nRows; r++) {
                 var midi = this.noteToMidi(allRows[r]);
-                if (midi === minMidi) {
-                  targetRow = r;
-                  break;
-                }
+                if (midi === maxMidi) topRow = r;
+                if (midi === minMidi) bottomRow = r;
               }
               
-              if (targetRow !== -1) {
-                // Center the octave starting from that row
-                var targetScroll = targetRow * rowH;
-                // Smooth scroll interpolation
-                this.scrollY += (targetScroll - this.scrollY) * 0.08;
-              }
+              // Center the view to show the range (with some padding)
+              var rangeSpan = bottomRow - topRow + 1;
+              var octavesToShow = 8; // Always show 8 notes
+              var centerRow = topRow + Math.floor(rangeSpan / 2);
+              
+              // Calculate scroll position to center the range
+              var targetRow = Math.max(0, Math.min(nRows - octavesToShow, centerRow - Math.floor(octavesToShow / 2)));
+              var targetScroll = targetRow * rowH;
+              
+              // Smooth scroll interpolation
+              this.scrollY += (targetScroll - this.scrollY) * 0.12;
             }
           }
         }
