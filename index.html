@@ -592,22 +592,60 @@
                     duration: hap.duration ? String(hap.duration) : null,
                   });
                   if (!label) return;
-
+                  
                   // Get cycle-relative position (0-1)
-                  var time = 0;
-                  if (hap.part && hap.part.begin) {
-                    try {
-                      var fract = hap.part.begin;
-                      // Floor and sub — convert Fraction to 0-1 cycle position
-                      if (typeof fract.floor === 'function' && typeof fract.sub === 'function') {
-                        var floored = fract.floor(1);
-                        var withinCycle = fract.sub(floored);
-                        time = Number(withinCycle);
+                  var fract = hap.part && hap.part.begin;
+                  var time = null;
+                  try {
+                    if (fract && typeof fract.floor === 'function' && typeof fract.sub === 'function') {
+                      // Strudel uses Fraction objects for time
+                      var floorVal = fract.floor();
+                      var diff = fract.sub(floorVal);
+                      
+                      console.log("[pn] time calc debug:", {
+                        fract_raw: fract,
+                        fract_type: typeof fract,
+                        fract_str: String(fract),
+                        floorVal: floorVal,
+                        floorVal_str: String(floorVal),
+                        diff: diff,
+                        diff_str: String(diff),
+                        diff_type: typeof diff,
+                        diff_valueOf: diff && typeof diff.valueOf === 'function' ? diff.valueOf() : 'no valueOf',
+                        diff_toNumber: diff && typeof diff.toNumber === 'function' ? diff.toNumber() : 'no toNumber',
+                        diff_n: diff && diff.n,
+                        diff_d: diff && diff.d,
+                        diff_s: diff && diff.s
+                      });
+                      
+                      if (typeof diff.valueOf === 'function') {
+                        time = diff.valueOf();
+                      } else if (typeof diff.toNumber === 'function') {
+                        time = diff.toNumber();
+                      } else if (diff.n !== undefined && diff.d !== undefined) {
+                        // Manual conversion: n/d * s (sign)
+                        time = (diff.n / diff.d) * (diff.s || 1);
                       } else {
-                        time = Number(fract) % 1;
+                        time = Number(diff);
                       }
-                    } catch(e) {
-                      console.warn("[pn] cannot compute cycle pos:", e);
+                    } else if (fract) {
+                      // Fallback: try numeric conversion
+                      time = Number(fract);
+                      if (!isNaN(time)) {
+                        time = time % 1;
+                      }
+                    }
+                    
+                    console.log("[pn] calculated time:", { label: label, time: time, time_type: typeof time });
+                  } catch (e) {
+                    console.warn("[pn] time calculation error:", e);
+                    // Last resort: parse string representation
+                    var fractStr = String(fract);
+                    var match = fractStr.match(/[\d.]+/);
+                    if (match) {
+                      time = parseFloat(match[0]) % 1;
+                    } else {
+                      time = 0;
                     }
                   }
                   if (!isFinite(time)) time = 0;
