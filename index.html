@@ -934,8 +934,9 @@
     }
 
     function stop() {
-      // Stop resets the entire environment: mute, reset clock, clear patterns
-      // Next play() will start from the beginning
+      // Stop resets the entire environment: mute, reset clock, clear patterns.
+      // Next play() will start from the beginning.
+      // The textarea content is preserved — user's code stays put.
       try { evaluate('hush()'); } catch(e) {}
       try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
       
@@ -950,9 +951,6 @@
       isPaused = false;
       setStatus('Stopped');
       punchcard.stop();
-      
-      // Clear the editor to start fresh
-      editor.value = '';
     }
 
     btnPlay.addEventListener('click', play);
