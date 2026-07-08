@@ -661,7 +661,9 @@
         var offsetY = 0;
 
         var ph = this.getPlayhead();
-        var PLAYHEAD_X = labelW + 4 + gridW * 0.25;
+        // Playhead at the far-left edge of the grid — notes trigger when they hit this wall.
+        // Notes scroll right-to-left: future (relTime > 0) on the right, past (relTime < 0) on the left.
+        var PLAYHEAD_X = labelW + 4;
 
         // Auto-scroll: find active rows near playhead
         var activeRow = -1;
@@ -680,30 +682,40 @@
         this.targetRow = Math.max(0, Math.min(nRows - visibleRows, this.targetRow));
         this.viewRow += (this.targetRow - this.viewRow) * 0.1;
 
-        // Clip to grid area
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(labelW + 4, 0, gridW, h);
-        ctx.clip();
-
         // Draw visible rows
         var startRow = Math.floor(this.viewRow);
         var rowOffset = (this.viewRow - startRow) * rowH;
         var endRow = Math.min(nRows, startRow + visibleRows + 1);
 
+        // ─── Label column (drawn OUTSIDE grid clip so labels are always visible) ───
+        for (var r = startRow; r < endRow; r++) {
+          var y = (r - startRow) * rowH - rowOffset;
+
+          // Label column background (alternating)
+          ctx.fillStyle = r % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)';
+          ctx.fillRect(0, y, labelW, rowH);
+
+          // Label text
+          ctx.fillStyle = '#bbbcc8';
+          ctx.font = '11px monospace';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(this.rows[r] || '', labelW - 6, y + rowH / 2);
+        }
+
+        // ─── Grid area (clipped so notes don't spill over labels) ───
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(labelW + 4, 0, gridW, h);
+        ctx.clip();
+
+        // Row backgrounds, note events, row separators
         for (var r = startRow; r < endRow; r++) {
           var y = (r - startRow) * rowH - rowOffset;
 
           // Row background
           ctx.fillStyle = r % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)';
           ctx.fillRect(labelW + 4, y, gridW, rowH);
-
-          // Label
-          ctx.fillStyle = '#888899';
-          ctx.font = '11px monospace';
-          ctx.textAlign = 'right';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(this.rows[r] || '', labelW, y + rowH / 2);
 
           // Note events
           var rowLabel = this.rows[r];
@@ -742,7 +754,7 @@
 
         ctx.restore();
 
-        // Playhead line (stationary, full height)
+        // Playhead line (stationary, full height, drawn on top of everything)
         ctx.strokeStyle = 'rgba(255,255,255,0.8)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -759,7 +771,7 @@
         ctx.closePath();
         ctx.fill();
 
-        // Beat markers (scroll with grid)
+        // Beat markers (scroll with grid, clipped to grid area)
         ctx.save();
         ctx.beginPath();
         ctx.rect(labelW + 4, 0, gridW, h);
