@@ -681,8 +681,6 @@
                   if (midi !== null) prevMidi = midi;
                 }
                 
-                console.log('[pn] Built punchcard:', this.events.length, 'events,', this.rows.length, 'rows:', this.rows);
-                console.log('[pn] Row metadata:', this.rowMeta.map(r => r.label + '(' + r.midi + (r.isBlack ? '#' : '') + ')').join(', '));
               } catch (e) {
                 console.error('[pn] buildFromPattern error:', e);
               }
@@ -868,9 +866,6 @@
 
         // Debug
         if (!this._lastDrawLog || performance.now() - this._lastDrawLog > 2000) {
-          console.log('[pn] DRAW: displayTopMidi=' + this.displayTopMidi.toFixed(2) +
-            ' bestTopMidi=' + bestTopMidi + ' scrollY=' + this.scrollY.toFixed(0) +
-            ' window=' + allRows.slice(0,12).join(',') + '...');
           this._lastDrawLog = performance.now();
         }
 
@@ -1058,7 +1053,7 @@
       }
       return 'cycle=' + cycle + ' phase=' + (typeof phase === 'number' ? phase.toFixed(3) : phase) +
         ' startTime=' + (s.startTime ? Number(s.startTime).toFixed(1) : s.startTime) +
-        ' cps=' + (typeof cps === 'function' ? Number(cps()).toFixed(2) : '?');
+        ' cps=' + (function() { try { var v = Number(cps()); return isFinite(v) ? v.toFixed(2) : v; } catch(e) { return 'err'; } })();
     }
 
     async function play() {
@@ -1073,21 +1068,25 @@
       try {
         punchcard.start();
 
-        // evaluate() returns a pattern, but may only be the last line in multiline code.
-        // Check multiple sources for the full playing pattern:
+        // Reset tempo to default (moved from stop(); setcps restarts cyclist otherwise)
+        try {
+          if (typeof setcps === 'function') {
+            setcps(defaultCps);
+          } else {
+            evaluate('setcps(' + defaultCps + ')');
+          }
+        } catch (e) {}
+
         var evalPattern = await evaluate(code);
         console.log('[play] scheduler state after evaluate:', schedulerDebug());
-        
+
         var pattern = null;
         if (repl && repl.pattern) {
           pattern = repl.pattern;
-          console.log('[pn] pattern source: repl.pattern');
         } else if (repl && typeof repl.getPattern === 'function') {
           pattern = repl.getPattern();
-          console.log('[pn] pattern source: repl.getPattern()');
         } else if (evalPattern && typeof evalPattern.queryArc === 'function') {
           pattern = evalPattern;
-          console.log('[pn] pattern source: evaluate() return value');
         }
         
         console.log('[pn] final pattern:', pattern ? 'found' : 'none');
@@ -1115,33 +1114,26 @@
     }
 
     function stop() {
-      // Full stop: silence audio, tear down scheduler, reset tempo.
-      // Next play() will create a fresh scheduler starting at cycle 0.
+      // Full stop: silence audio, kill scheduler.
+      // Tempo reset moved to play() to avoid restarting the cyclist.
       try { evaluate('hush()'); } catch(e) {}
       try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
       
-      // Stop the scheduler directly and clear its startTime so the
-      // next evaluate() picks up the current audio clock as cycle 0.
-      // We avoid repl.stop() here because it may null out the scheduler
-      // reference, making subsequent stops unable to reset startTime.
+      // Stop the scheduler and clear its clock
       if (repl && repl.scheduler) {
         if (typeof repl.scheduler.stop === 'function') {
           repl.scheduler.stop();
         }
+        console.log('[stop] scheduler keys:', Object.keys(repl.scheduler));
+        console.log('[stop] scheduler internals:', {
+          started: repl.scheduler.started,
+          startTime: repl.scheduler.startTime,
+          _startTime: repl.scheduler._startTime,
+          cyclist: repl.scheduler.cyclist ? Object.keys(repl.scheduler.cyclist) : null
+        });
         repl.scheduler.startTime = undefined;
       }
-      console.log('[stop] scheduler state after stop:', schedulerDebug());
-      
-      // Reset tempo back to the default (setcps mutates global scheduler state)
-      try {
-        if (typeof setcps === 'function') {
-          setcps(defaultCps);
-        } else {
-          evaluate('setcps(' + defaultCps + ')');
-        }
-      } catch (e) {
-        console.warn('[stop] could not reset cps:', e);
-      }
+      console.log('[stop] after reset:', schedulerDebug());
       
       isPlaying = false;
       isPaused = false;
