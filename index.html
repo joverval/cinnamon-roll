@@ -554,15 +554,14 @@
 
             /**
              * Build punchcard data by querying a Pattern.
-             * Queries a wider arc (4 cycles) to catch slow patterns like .slow(2).
-             * Normalizes all event times to [0, 1) within the first cycle.
+             * Queries the first cycle (0 to 1) to get the pattern's structure.
              */
             buildFromPattern: function(pattern) {
               if (!pattern || typeof pattern.queryArc !== 'function') return;
 
               try {
-                // Query 4 cycles to catch slow patterns (e.g. .slow(2) or .slow(4))
-                var haps = pattern.queryArc(0, 4);
+                // Query 1 cycle to get the pattern structure
+                var haps = pattern.queryArc(0, 1);
 
                 this.events = [];
                 this.rows = [];
