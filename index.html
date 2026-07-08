@@ -1068,13 +1068,6 @@
       try {
         punchcard.start();
 
-        // The cyclist's start() sets lastBegin=now, but num_cycles_at_cps_change
-        // carries over from the previous run. Reset it so cycle starts at 0.
-        if (repl && repl.scheduler) {
-          repl.scheduler.num_cycles_at_cps_change = 0;
-          console.log('[play] reset num_cycles_at_cps_change to 0');
-        }
-
         // Bake cps reset into the evaluated code so setcps() and the pattern
         // run atomically — avoids the cyclist restarting between calls and
         // ticking forward before the pattern starts.
@@ -1121,12 +1114,16 @@
       try { evaluate('hush()'); } catch(e) {}
       try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
       
-      // Stop the scheduler
+      // Stop the scheduler and zero the cycle counter so next start = cycle 0
       if (repl && repl.scheduler) {
         if (typeof repl.scheduler.stop === 'function') {
           repl.scheduler.stop();
         }
-        console.log('[stop] done, scheduler stopped');
+        // Zero the cycle accumulator — setcps() adjusts this when cps changes,
+        // and it carries over across stop/start cycles. When it's 0 at stop
+        // time, the next setcps() keeps it at 0 regardless of tempo changes.
+        repl.scheduler.num_cycles_at_cps_change = 0;
+        console.log('[stop] zeroed num_cycles_at_cps_change');
       }
       
       isPlaying = false;
@@ -1256,7 +1253,7 @@
     // Report ready
     console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
       'color:#ff8a8a;font-weight:bold', 'color:#888');
-    console.log('[build] 6b4a515-cycles — reset num_cycles_at_cps_change in play()');
+    console.log('[build] 50bc08e-z — zero num_cycles in stop() before next play');
   })();
   </script>
 </body>
