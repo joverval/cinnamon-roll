@@ -549,8 +549,28 @@
 
               try {
                 // Query one full cycle (0 to 1)
+                // Also query the NEXT cycle to see if we're getting haps from cycle 1 instead of 0
+                
+                // Get current time to see what cycle we're actually in
+                var currentTime = (typeof getTime === 'function') ? getTime() : 0;
+                console.log("[pn] Current time when querying:", currentTime);
                 console.log("[pn] calling queryArc(0, 1)...");
-                var haps = pattern.queryArc(0, 1);
+                var haps0 = pattern.queryArc(0, 1);
+                var haps1 = pattern.queryArc(1, 2);
+                console.log("[pn] queryArc(0,1) returned", haps0.length, "haps");
+                console.log("[pn] queryArc(1,2) returned", haps1.length, "haps");
+                console.log("[pn] First hap from cycle 0:", haps0[0] ? JSON.stringify({
+                  value: haps0[0].value,
+                  begin: String(haps0[0].part.begin),
+                  end: String(haps0[0].part.end)
+                }) : 'none');
+                console.log("[pn] First hap from cycle 1:", haps1[0] ? JSON.stringify({
+                  value: haps1[0].value,
+                  begin: String(haps1[0].part.begin),
+                  end: String(haps1[0].part.end)
+                }) : 'none');
+                
+                var haps = haps0;
                 console.log("[pn] queryArc returned", haps.length, "haps");
 
                 this.events = [];
