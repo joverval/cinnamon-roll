@@ -717,6 +717,39 @@
         return (performance.now() / 1000) % 1;
       },
 
+      /** Find the 12-semitone window [top-11, top] with the most notes.
+       *  Returns the top MIDI of the best window (integer). */
+      findBestWindow: function(events, fallback) {
+        var midis = [];
+        var self = this;
+        events.forEach(function(ev) {
+          var m = self.noteToMidi(ev.label);
+          if (m !== null) midis.push(m);
+        });
+        if (midis.length === 0) return fallback;
+
+        var minM = midis[0], maxM = midis[0];
+        for (var i = 1; i < midis.length; i++) {
+          if (midis[i] < minM) minM = midis[i];
+          if (midis[i] > maxM) maxM = midis[i];
+        }
+
+        var bestTop = fallback;
+        var bestCount = 0;
+        // Try every possible 12-semitone window (top from maxM down to minM+11)
+        for (var top = maxM; top >= minM + 11; top--) {
+          var count = 0;
+          for (var j = 0; j < midis.length; j++) {
+            if (midis[j] >= top - 11 && midis[j] <= top) count++;
+          }
+          if (count > bestCount) {
+            bestCount = count;
+            bestTop = top;
+          }
+        }
+        return bestTop;
+      },
+
       draw: function() {
         var ctx = punchcardCtx;
         var dpr = window.devicePixelRatio || 1;
@@ -729,14 +762,13 @@
 
         if (!this.events || this.events.length === 0) return;
 
-        // ── Octave tracking: always show exactly one octave, slide to follow notes ──
+        // ── Sliding 12-semitone window: follows densest note cluster ──
         var noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         var BLACK_FACTOR = 0.5;
-        var ROWS_PER_OCTAVE = 12;
-        var WHITES_PER_OCTAVE = 7, BLACKS_PER_OCTAVE = 5;
+        var WHITES = 7, BLACKS = 5;
 
-        // Initialize display octave
-        if (typeof this.displayOctave !== 'number') this.displayOctave = 4;
+        // Initialize displayTopMidi (top of the 12-note window) — default to B4
+        if (typeof this.displayTopMidi !== 'number') this.displayTopMidi = 71;
 
         // Get absolute time
         var absoluteTime = getTime ? getTime() : 0;
@@ -749,8 +781,8 @@
         var gridW = w - labelW - 8;
         var PLAYHEAD_X = labelW + 4;
 
-        // Determine target octave from notes near the playhead
-        var targetOctave = Math.round(this.displayOctave);
+        // Find the best 12-note window from events near the playhead
+        var bestTopMidi = Math.round(this.displayTopMidi);
         if (this.events && this.events.length > 0) {
           var capturedLen = this.capturedCycles || 128;
           var wrappedCycle = currentCycle % capturedLen;
@@ -775,55 +807,27 @@
           }
 
           if (visibleEvents.length > 0) {
-            var minMidi = Infinity, maxMidi = -Infinity;
-            var self = this;
-            visibleEvents.forEach(function(ev) {
-              var midi = self.noteToMidi(ev.label);
-              if (midi !== null) {
-                if (midi < minMidi) minMidi = midi;
-                if (midi > maxMidi) maxMidi = midi;
-              }
-            });
-            if (minMidi !== Infinity) {
-              // Pick the octave where MOST notes are active (modal octave)
-              var octaveCounts = {};
-              visibleEvents.forEach(function(ev) {
-                var midi = self.noteToMidi(ev.label);
-                if (midi !== null) {
-                  var oct = Math.floor(midi / 12) - 1;
-                  octaveCounts[oct] = (octaveCounts[oct] || 0) + 1;
-                }
-              });
-              var bestOctave = targetOctave;
-              var bestCount = 0;
-              for (var o in octaveCounts) {
-                if (octaveCounts[o] > bestCount) {
-                  bestCount = octaveCounts[o];
-                  bestOctave = parseInt(o);
-                }
-              }
-              targetOctave = bestOctave;
-            }
+            bestTopMidi = this.findBestWindow(visibleEvents, bestTopMidi);
           }
         }
 
-        // Smooth octave transitions
-        if (!isFinite(targetOctave)) targetOctave = 4;
-        this.displayOctave += (targetOctave - this.displayOctave) * 0.12;
+        // Smooth tracking
+        if (!isFinite(bestTopMidi)) bestTopMidi = 71;
+        this.displayTopMidi += (bestTopMidi - this.displayTopMidi) * 0.12;
 
-        // Generate TWO octaves of rows (24 total) so we can scroll smoothly between them.
-        // Exactly 12 rows (one octave) fill the visible canvas.
-        var octaveBase = Math.floor(this.displayOctave);
+        // Generate 24 rows: 12 above the current window + 12 for the window
+        // This gives smooth scroll room in both directions
+        var topBase = Math.floor(this.displayTopMidi);
         var allRows = [];
-        for (var oct = octaveBase + 1; oct >= octaveBase; oct--) {
-          for (var i = 11; i >= 0; i--) {
-            allRows.push(noteNames[i] + oct);
-          }
+        for (var midi = topBase + 11; midi >= topBase - 12; midi--) {
+          var oct = Math.floor(midi / 12) - 1;
+          var sem = ((midi % 12) + 12) % 12;
+          allRows.push(noteNames[sem] + oct);
         }
-        var nRows = allRows.length; // 24
+        var nRows = 24;
 
-        // Size so one octave (12 rows) fills the visible height
-        var unitH = h / (WHITES_PER_OCTAVE + BLACKS_PER_OCTAVE * BLACK_FACTOR);
+        // Size: any 12 consecutive semitones = 7 white + 5 black → same total height
+        var unitH = h / (WHITES + BLACKS * BLACK_FACTOR);
         var rowLayout = [];
         var cumY = 0;
         for (var ri = 0; ri < nRows; ri++) {
@@ -834,27 +838,32 @@
           rowLayout.push({ label: label, midi: midi, isBlack: isBlack, y: cumY, h: rh });
           cumY += rh;
         }
-        var totalHeight = cumY; // should be ~2h
+        var totalHeight = cumY;
         var visibleHeight = h;
 
-        // scrollY slides between octaves: fracOctave 0→1 scrolls from upper to lower octave
-        // Layout: octaveBase+1 (higher, on top) then octaveBase (lower, below)
-        // scrollY=0 shows upper octave, scrollY=h shows lower octave
-        var fracOctave = this.displayOctave - octaveBase;
-        this.scrollY = (1 - fracOctave) * h;
+        // scrollY: align the anchor row (floor of displayTopMidi) to top of view,
+        // plus fractional offset for sub-semitone smoothness
+        var intPart = Math.floor(this.displayTopMidi);
+        var fracPart = this.displayTopMidi - intPart;
+        var anchorIdx = -1;
+        for (var ri = 0; ri < nRows; ri++) {
+          if (rowLayout[ri].midi === intPart) { anchorIdx = ri; break; }
+        }
+        if (anchorIdx >= 0) {
+          this.scrollY = rowLayout[anchorIdx].y - fracPart * rowLayout[anchorIdx].h;
+        }
 
-        // Store for scroll clamping
+        // Clamp
         this.totalHeight = totalHeight;
         this.visibleHeight = visibleHeight;
-        // Clamp scrollY
         var maxScroll = Math.max(0, totalHeight - visibleHeight);
         this.scrollY = Math.max(0, Math.min(maxScroll, this.scrollY));
 
         // Debug
         if (!this._lastDrawLog || performance.now() - this._lastDrawLog > 2000) {
-          console.log('[pn] DRAW: octaveBase=' + octaveBase + ' displayOctave=' + this.displayOctave.toFixed(2) +
-            ' targetOctave=' + targetOctave + ' scrollY=' + this.scrollY.toFixed(0) +
-            ' allRows=' + allRows.slice(0,12).join(',') + '...');
+          console.log('[pn] DRAW: displayTopMidi=' + this.displayTopMidi.toFixed(2) +
+            ' bestTopMidi=' + bestTopMidi + ' scrollY=' + this.scrollY.toFixed(0) +
+            ' window=' + allRows.slice(0,12).join(',') + '...');
           this._lastDrawLog = performance.now();
         }
 
