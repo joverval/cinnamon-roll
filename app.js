@@ -808,5 +808,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 188-lb2 — lastBegin reset + no async evaluate in stop');
+  console.log('[build] 189-pc1 -- ._punchcard/.pianoroll rewrite + opt-in piano roll');
 })();
