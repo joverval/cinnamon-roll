@@ -746,7 +746,7 @@
         var nRows = allRows.length;
         var labelW = 60;
         var gridW = w - labelW - 8;
-        var rowH = Math.min(30, h / 12);  // Max 30px per row, or fit 12 rows
+        var rowH = h / 8;  // Always show exactly 8 notes (one octave)
         var totalHeight = nRows * rowH;
         var visibleHeight = h;
         
@@ -754,12 +754,55 @@
         this.totalHeight = totalHeight;
         this.visibleHeight = visibleHeight;
         
+        var ph = this.getPlayhead();
+        var PLAYHEAD_X = labelW + 4;
+        
+        // Auto-scroll to follow upcoming notes in current cycle
+        if (this.events && this.events.length > 0) {
+          var self = this;
+          // Find events near the playhead (within next 0.15 cycles)
+          var upcomingEvents = this.events.filter(function(ev) {
+            var timeInCycle = ev.time % 1;
+            var relTime = timeInCycle - ph;
+            if (relTime < 0) relTime += 1;
+            return relTime >= 0 && relTime < 0.15;
+          });
+          
+          if (upcomingEvents.length > 0) {
+            // Find min/max MIDI of upcoming events
+            var minMidi = Infinity, maxMidi = -Infinity;
+            upcomingEvents.forEach(function(ev) {
+              var midi = self.noteToMidi(ev.label);
+              if (midi !== null) {
+                if (midi < minMidi) minMidi = midi;
+                if (midi > maxMidi) maxMidi = midi;
+              }
+            });
+            
+            if (minMidi !== Infinity) {
+              // Find which row index contains the highest note (minMidi)
+              var targetRow = -1;
+              for (var r = 0; r < nRows; r++) {
+                var midi = this.noteToMidi(allRows[r]);
+                if (midi === minMidi) {
+                  targetRow = r;
+                  break;
+                }
+              }
+              
+              if (targetRow !== -1) {
+                // Center the octave starting from that row
+                var targetScroll = targetRow * rowH;
+                // Smooth scroll interpolation
+                this.scrollY += (targetScroll - this.scrollY) * 0.08;
+              }
+            }
+          }
+        }
+        
         // Clamp scrollY
         var maxScroll = Math.max(0, totalHeight - visibleHeight);
         this.scrollY = Math.max(0, Math.min(maxScroll, this.scrollY));
-        
-        var ph = this.getPlayhead();
-        var PLAYHEAD_X = labelW + 4;
 
         // ─── Label column (drawn OUTSIDE grid clip so labels are always visible) ───
         for (var r = 0; r < nRows; r++) {
