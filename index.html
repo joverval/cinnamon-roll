@@ -949,7 +949,13 @@
       try { evaluate('hush()'); } catch(e) {}
       try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
       
-      // Reset the clock to 0
+      // Reset the clock to 0 - Strudel uses a scheduler with a time property
+      if (repl && repl.scheduler) {
+        if (typeof repl.scheduler.resetTime === 'function') {
+          repl.scheduler.resetTime();
+        }
+        repl.scheduler.time = 0;
+      }
       if (repl && typeof repl.reset === 'function') {
         repl.reset();
       } else if (typeof resetClock !== 'undefined') {
