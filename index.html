@@ -553,137 +553,63 @@
 
             /**
              * Build punchcard data by querying a Pattern.
-             * pattern: the playing Pattern (or sub-Pattern) returned by evaluate()
+             * Queries a wider arc (4 cycles) to catch slow patterns like .slow(2).
+             * Normalizes all event times to [0, 1) within the first cycle.
              */
             buildFromPattern: function(pattern) {
-              console.log("[pn] buildFromPattern called");
-              if (!pattern) {
-                console.log("[pn] pattern is null/undefined");
-                return;
-              }
-              if (typeof pattern.queryArc !== 'function') {
-                console.log("[pn] pattern has no queryArc method");
-                return;
-              }
-              
+              if (!pattern || typeof pattern.queryArc !== 'function') return;
+
               try {
-                // Query one full cycle (0 to 1)
-                // Also query the NEXT cycle to see if we're getting haps from cycle 1 instead of 0
-                
-                // Get current time to see what cycle we're actually in
-                var currentTime = (typeof getTime === 'function') ? getTime() : 0;
-                console.log("[pn] Current time when querying:", currentTime);
-                console.log("[pn] calling queryArc(0, 1)...");
-                var haps0 = pattern.queryArc(0, 1);
-                var haps1 = pattern.queryArc(1, 2);
-                console.log("[pn] queryArc(0,1) returned", haps0.length, "haps");
-                console.log("[pn] queryArc(1,2) returned", haps1.length, "haps");
-                console.log("[pn] First hap from cycle 0:", haps0[0] ? JSON.stringify({
-                  value: haps0[0].value,
-                  begin: String(haps0[0].part.begin),
-                  end: String(haps0[0].part.end)
-                }) : 'none');
-                console.log("[pn] First hap from cycle 1:", haps1[0] ? JSON.stringify({
-                  value: haps1[0].value,
-                  begin: String(haps1[0].part.begin),
-                  end: String(haps1[0].part.end)
-                }) : 'none');
-                
-                var haps = haps0;
-                console.log("[pn] queryArc returned", haps.length, "haps");
+                // Query 4 cycles to catch slow patterns (e.g. .slow(2) or .slow(4))
+                var haps = pattern.queryArc(0, 4);
 
                 this.events = [];
                 this.rows = [];
                 var self = this;
-                
-                // Track which labels we've already seen to avoid duplicates
-                var seenLabels = {};
+                var seen = {};  // dedup: "time_0.XXX:label"
 
                 haps.forEach(function(hap) {
-                  // Skip non-onset haps (rests, tied notes from previous cycle)
                   if (!hap.hasOnset || !hap.hasOnset()) return;
-                  
+
                   var label = self.labelFromValue(hap.value);
-                  console.log("[pn] hap:", {
-                    label: label,
-                    value: hap.value,
-                    valueKeys: hap.value && typeof hap.value === 'object' ? Object.keys(hap.value) : typeof hap.value,
-                    valueJson: JSON.stringify(hap.value),
-                    time_begin: hap.part && hap.part.begin ? String(hap.part.begin) : null,
-                    time_end: hap.part && hap.part.end ? String(hap.part.end) : null,
-                    duration: hap.duration ? String(hap.duration) : null,
-                  });
                   if (!label) return;
-                  
-                  // Skip if we've already seen this label (deduplicate .jux, .rev, etc.)
-                  if (seenLabels[label]) return;
-                  seenLabels[label] = true;
-                  
-                  // Get cycle-relative position (0-1)
+
+                  // Get cycle-relative position (0-1) in the first cycle
                   var fract = hap.part && hap.part.begin;
-                  var time = null;
+                  var time = 0;
                   try {
-                    if (fract && typeof fract.floor === 'function' && typeof fract.sub === 'function') {
-                      // Strudel uses Fraction objects for time
-                      var floorVal = fract.floor();
-                      var diff = fract.sub(floorVal);
-                      
-                      console.log("[pn] time calc debug:", {
-                        fract_raw: fract,
-                        fract_type: typeof fract,
-                        fract_str: String(fract),
-                        floorVal: floorVal,
-                        floorVal_str: String(floorVal),
-                        diff: diff,
-                        diff_str: String(diff),
-                        diff_type: typeof diff,
-                        diff_valueOf: diff && typeof diff.valueOf === 'function' ? diff.valueOf() : 'no valueOf',
-                        diff_toNumber: diff && typeof diff.toNumber === 'function' ? diff.toNumber() : 'no toNumber',
-                        diff_n: diff && diff.n,
-                        diff_d: diff && diff.d,
-                        diff_s: diff && diff.s
-                      });
-                      
-                      if (typeof diff.valueOf === 'function') {
-                        time = diff.valueOf();
-                      } else if (typeof diff.toNumber === 'function') {
-                        time = diff.toNumber();
-                      } else {
-                        time = Number(String(diff));
-                      }
-                    } else if (typeof fract === 'number') {
-                      time = fract;
-                    } else if (typeof fract === 'string') {
-                      time = parseFloat(fract);
-                    } else if (fract) {
-                      time = Number(String(fract));
+                    var f = fract;
+                    if (f && typeof f.floor === 'function' && typeof f.sub === 'function') {
+                      var floored = f.floor();
+                      var withinCycle = f.sub(floored);
+                      time = Number(withinCycle);
+                    } else {
+                      time = Number(f) % 1;
                     }
-                    
-                    console.log("[pn] calculated time:", { label: label, time: time, time_type: typeof time });
                   } catch (e) {
-                    console.warn("[pn] time calculation error:", e);
-                    // Last resort: parse string representation
-                    try {
-                      time = parseFloat(String(fract));
-                    } catch (e2) {
-                      // ignore
-                    }
+                    time = Number(fract) % 1 || 0;
                   }
                   if (!isFinite(time)) time = 0;
-                  
+                  if (time < 0) time += 1;
+                  if (time >= 1) time -= 1;
+
+                  // Round time key to 3 decimals for stable dedup
+                  var timeKey = time.toFixed(3);
+                  var dedupKey = timeKey + ':' + label;
+                  if (seen[dedupKey]) return;
+                  seen[dedupKey] = true;
+
                   self.events.push({ time: time, label: String(label) });
-                  
+
                   if (self.rows.indexOf(String(label)) === -1) {
                     self.rows.push(String(label));
                   }
                 });
-                
+
                 this.rows.sort();
-                console.log("[pn] Built punchcard:", this.events.length, "events,", this.rows.length, "rows:", this.rows);
-                console.log("[pn] Events:", this.events.map(e => ({ label: e.label, time: e.time.toFixed(3) })));
-              } catch(e) {
-                console.error("[pn] buildFromPattern error:", e);
-                console.error(e.stack);
+                console.log('[pn] Built punchcard:', this.events.length, 'events,', this.rows.length, 'rows:', this.rows);
+              } catch (e) {
+                console.error('[pn] buildFromPattern error:', e);
               }
             },
 
@@ -696,28 +622,26 @@
             },
 
       getPlayhead: function() {
+        // Use strudel's getTime() which is cycle-based and immune to tempo changes.
+        // It returns the current absolute cycle position (a Fraction-like number).
         try {
-          var t = getTime ? getTime() : (performance.now() / 1000);
-          return ((t - this.startCycle) % this.cycleLen) / this.cycleLen;
-        } catch(e) {
-          return (performance.now() / 1000) % 1;
-        }
+          if (typeof getTime === 'function') {
+            var t = getTime();
+            // Convert Fraction or number to [0, 1) range via floor + sub
+            if (t && typeof t.floor === 'function' && typeof t.sub === 'function') {
+              var floored = t.floor();
+              return Number(t.sub(floored));
+            }
+            // Plain number fallback
+            var n = Number(t);
+            return isFinite(n) ? n - Math.floor(n) : 0;
+          }
+        } catch(e) {}
+        // Strudel not initialized yet — use perf.now as last resort
+        return (performance.now() / 1000) % 1;
       },
 
       draw: function() {
-        // Refresh cycle length in case cps changed
-        try {
-          var cl = cps ? (1 / (cps() || 1)) : 1;
-          if (isFinite(cl) && cl > 0) this.cycleLen = cl;
-        } catch(e) {}
-
-        // DEBUG: Log events array state
-        if (this.events.length > 0 && this._lastLogTime !== Math.floor(performance.now() / 2000)) {
-          console.log('[pn] draw: events array =', this.events.map(e => ({ label: e.label, time: e.time.toFixed(3) })));
-          console.log('[pn] draw: playhead =', this.getPlayhead().toFixed(3), 'cycleLen =', this.cycleLen);
-          this._lastLogTime = Math.floor(performance.now() / 2000);
-        }
-
         var ctx = punchcardCtx;
         var dpr = window.devicePixelRatio || 1;
         var w = punchcardCanvas.width / dpr;
@@ -766,12 +690,6 @@
         var rowOffset = (this.viewRow - startRow) * rowH;
         var endRow = Math.min(nRows, startRow + visibleRows + 1);
 
-        // DEBUG: Log rendering positions for first frame
-        var debugThisFrame = !this._debuggedFirstFrame && this.events.length > 0;
-        if (debugThisFrame) {
-          console.log('[pn] RENDER DEBUG: playhead =', ph.toFixed(3), 'gridW =', gridW.toFixed(0), 'PLAYHEAD_X =', PLAYHEAD_X.toFixed(0));
-        }
-
         for (var r = startRow; r < endRow; r++) {
           var y = (r - startRow) * rowH - rowOffset;
 
@@ -798,11 +716,6 @@
               var ex = PLAYHEAD_X + pixelOffset;
               var ew = Math.max(3, gridW / 80);
               var eh = rowH - 2;
-
-              // DEBUG: Log note positions on first frame
-              if (debugThisFrame && cycle === 0) {
-                console.log('[pn] RENDER: note', ev.label, 'time', ev.time.toFixed(3), 'relTime', relTime.toFixed(3), 'ex', ex.toFixed(1), 'cycle', cycle);
-              }
 
               if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
 
@@ -905,17 +818,20 @@
       try {
         punchcard.start();
 
-        // Evaluate the ORIGINAL code — no wrapping needed.
-        // evaluate() returns the Pattern that strudel is now playing.
-        var pattern = await evaluate(code);
-        console.log('[pn] evaluate returned pattern:', pattern ? 'yes' : 'no');
+        // evaluate() may return only the last pattern in multiline code.
+        // The repl stores the full stacked (playing) pattern in repl.pattern.
+        await evaluate(code);
+        var pattern = (repl && repl.pattern) || null;
+        if (!pattern && repl && typeof repl.getPattern === 'function') {
+          pattern = repl.getPattern();
+        }
+        console.log('[pn] pattern source:', pattern ? 'repl.pattern' : 'none');
 
         isPlaying = true;
         isPaused = false;
         setStatus('Playing', 'playing');
 
-        // Query the pattern for piano roll data
-        punchcard.buildFromPattern(pattern);
+        if (pattern) punchcard.buildFromPattern(pattern);
       } catch (e) {
         showError(e.message || String(e));
         isPlaying = false;
