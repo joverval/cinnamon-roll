@@ -533,6 +533,25 @@
               return null;
             },
 
+            /** Convert note label to MIDI number (e.g. "C4" -> 60, "D#3" -> 51).
+             *  Returns null if not a valid note name. */
+            noteToMidi: function(label) {
+              if (typeof label !== 'string') return null;
+              var m = label.match(/^([A-Ga-g])([#b]?)(-?\d+)$/);
+              if (!m) return null;
+              var noteMap = {C:0, D:2, E:4, F:5, G:7, A:9, B:11};
+              var base = noteMap[m[1].toUpperCase()];
+              var alter = m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0;
+              var oct = parseInt(m[3]);
+              return (oct + 1) * 12 + base + alter;
+            },
+
+            /** Check if a MIDI note is a black key. */
+            isBlackKey: function(midi) {
+              var semitone = midi % 12;
+              return semitone === 1 || semitone === 3 || semitone === 6 || semitone === 8 || semitone === 10;
+            },
+
             start: function() {
               if (this.animId) return;
               this.events = [];
@@ -606,7 +625,39 @@
                   }
                 });
 
-                this.rows.sort();
+                // Sort rows by MIDI number (high to low for piano-like orientation)
+                // Rows with valid MIDI come first (pitched), followed by non-pitched (drums, etc.)
+                var self = this;
+                this.rows.sort(function(a, b) {
+                  var midiA = self.noteToMidi(a);
+                  var midiB = self.noteToMidi(b);
+                  var hasA = midiA !== null;
+                  var hasB = midiB !== null;
+                  // Pitched notes first, sorted high to low
+                  if (hasA && !hasB) return -1;
+                  if (!hasA && hasB) return 1;
+                  if (hasA && hasB) return midiB - midiA;  // descending MIDI
+                  // Non-pitched: sort alphabetically
+                  return a < b ? -1 : a > b ? 1 : 0;
+                });
+                
+                // Build row metadata for DAW-style layout
+                this.rowMeta = [];
+                var prevMidi = null;
+                for (var r = 0; r < this.rows.length; r++) {
+                  var label = this.rows[r];
+                  var midi = this.noteToMidi(label);
+                  var isBlack = midi !== null ? this.isBlackKey(midi) : false;
+                  var interval = midi !== null && prevMidi !== null ? prevMidi - midi : 1;
+                  this.rowMeta.push({
+                    label: label,
+                    midi: midi,
+                    isBlack: isBlack,
+                    interval: interval
+                  });
+                  if (midi !== null) prevMidi = midi;
+                }
+                
                 console.log('[pn] Built punchcard:', this.events.length, 'events,', this.rows.length, 'rows:', this.rows);
               } catch (e) {
                 console.error('[pn] buildFromPattern error:', e);
@@ -651,17 +702,26 @@
         ctx.fillStyle = '#1a1a1f';
         ctx.fillRect(0, 0, w, h);
 
-        var nRows = Math.max(this.rows.length, 4);
+        if (!this.rowMeta || this.rowMeta.length === 0) return;
+
+        var nRows = this.rowMeta.length;
         var labelW = 60;
         var gridW = w - labelW - 8;
-        var rowH = Math.min(28, h / 6);          // fixed row height, allow scrolling
-        var visibleRows = Math.floor(h / rowH);
-        var totalGridH = nRows * rowH;
-        var offsetY = 0;
-
+        
+        // Calculate row heights: proportional to interval, with min/max bounds
+        var baseRowH = 24;  // base height for 1 semitone
+        var minRowH = 16;   // minimum height for readability
+        var rowHeights = [];
+        var totalH = 0;
+        for (var r = 0; r < nRows; r++) {
+          var interval = this.rowMeta[r].interval || 1;
+          var height = Math.max(minRowH, Math.min(48, baseRowH * interval));
+          rowHeights.push(height);
+          totalH += height;
+        }
+        
+        // Calculate visible rows based on scroll
         var ph = this.getPlayhead();
-        // Playhead at the far-left edge of the grid — notes trigger when they hit this wall.
-        // Notes scroll right-to-left: future (relTime > 0) on the right, past (relTime < 0) on the left.
         var PLAYHEAD_X = labelW + 4;
 
         // Auto-scroll: find active rows near playhead
@@ -674,32 +734,61 @@
             if (ri >= 0) activeRow = ri;
           }
         });
+        
         // Smooth scroll toward active row
         if (activeRow >= 0) {
-          this.targetRow = activeRow - Math.floor(visibleRows / 2);
+          this.targetRow = activeRow;
         }
-        this.targetRow = Math.max(0, Math.min(nRows - visibleRows, this.targetRow));
+        this.targetRow = Math.max(0, Math.min(nRows - 1, this.targetRow));
         this.viewRow += (this.targetRow - this.viewRow) * 0.1;
 
-        // Draw visible rows
-        var startRow = Math.floor(this.viewRow);
-        var rowOffset = (this.viewRow - startRow) * rowH;
-        var endRow = Math.min(nRows, startRow + visibleRows + 1);
+        // Calculate Y positions for all rows
+        var rowYPositions = [];
+        var currentY = 0;
+        for (var r = 0; r < nRows; r++) {
+          rowYPositions.push(currentY);
+          currentY += rowHeights[r];
+        }
+        var scrollOffset = rowYPositions[Math.floor(this.viewRow)] || 0;
+        
+        // Find visible rows
+        var startRow = 0;
+        var endRow = nRows;
+        for (var r = 0; r < nRows; r++) {
+          var y = rowYPositions[r] - scrollOffset;
+          if (y + rowHeights[r] > 20) {
+            startRow = r;
+            break;
+          }
+        }
+        for (var r = nRows - 1; r >= 0; r--) {
+          var y = rowYPositions[r] - scrollOffset;
+          if (y < h - 20) {
+            endRow = r + 1;
+            break;
+          }
+        }
 
         // ─── Label column (drawn OUTSIDE grid clip so labels are always visible) ───
         for (var r = startRow; r < endRow; r++) {
-          var y = (r - startRow) * rowH - rowOffset;
+          var meta = this.rowMeta[r];
+          var y = rowYPositions[r] - scrollOffset;
+          var rowH = rowHeights[r];
 
-          // Label column background (alternating)
-          ctx.fillStyle = r % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)';
+          // Label column background: black keys darker, white keys lighter
+          if (meta.isBlack) {
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.05)';
+          }
           ctx.fillRect(0, y, labelW, rowH);
 
           // Label text
-          ctx.fillStyle = '#bbbcc8';
+          ctx.fillStyle = meta.isBlack ? '#888899' : '#bbbcc8';
           ctx.font = '11px monospace';
           ctx.textAlign = 'right';
           ctx.textBaseline = 'middle';
-          ctx.fillText(this.rows[r] || '', labelW - 6, y + rowH / 2);
+          ctx.fillText(meta.label, labelW - 6, y + rowH / 2);
         }
 
         // ─── Grid area (clipped so notes don't spill over labels) ───
@@ -710,14 +799,28 @@
 
         // Row backgrounds, note events, row separators
         for (var r = startRow; r < endRow; r++) {
-          var y = (r - startRow) * rowH - rowOffset;
+          var meta = this.rowMeta[r];
+          var y = rowYPositions[r] - scrollOffset;
+          var rowH = rowHeights[r];
 
-          // Row background
-          ctx.fillStyle = r % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)';
+          // Row background: black keys darker
+          if (meta.isBlack) {
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+          } else {
+            ctx.fillStyle = 'rgba(255,255,255,0.03)';
+          }
           ctx.fillRect(labelW + 4, y, gridW, rowH);
 
+          // Row separator
+          ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(labelW + 4, y + rowH);
+          ctx.lineTo(labelW + 4 + gridW, y + rowH);
+          ctx.stroke();
+
           // Note events
-          var rowLabel = this.rows[r];
+          var rowLabel = meta.label;
           var CYCLES = 3;
 
           for (var cycle = -1; cycle < CYCLES - 1; cycle++) {
@@ -741,14 +844,6 @@
               ctx.fill();
             });
           }
-
-          // Row separator
-          ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-          ctx.lineWidth = 0.5;
-          ctx.beginPath();
-          ctx.moveTo(labelW + 4, y + rowH);
-          ctx.lineTo(labelW + 4 + gridW, y + rowH);
-          ctx.stroke();
         }
 
         ctx.restore();
