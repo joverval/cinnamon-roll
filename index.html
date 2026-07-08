@@ -508,28 +508,44 @@
         punchcardCanvas.height = rect.height * dpr;
         punchcardCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
       },
-      /** Extract a display label from a hap value.
+      /** Normalize a note label to canonical form: uppercase root + sharps.
+       *  "c3" → "C3", "eb3" → "D#3", "Db3" → "C#3". Passes non-notes through. */
+            normalizeLabel: function(label) {
+              if (typeof label !== 'string') return label;
+              var m = label.match(/^([A-Ga-g])(#|b)?(-?\d+)$/);
+              if (!m) return label;
+              var root = m[1].toUpperCase();
+              var acc = m[2] || '';
+              var note = root + acc;
+              var flatToSharp = {Db:'C#', Eb:'D#', Fb:'E', Gb:'F#', Ab:'G#', Bb:'A#', Cb:'B'};
+              if (flatToSharp[note]) note = flatToSharp[note];
+              return note + m[3];
+            },
+
+            /** Extract a display label from a hap value.
        *  Handles: strings ("bd"), numbers (note midi), objects ({s:"bd"}, {note:"C4"}, {n:0}) */
             labelFromValue: function(v) {
               if (v == null) return null;
-              if (typeof v === 'string') return v;
+              var self = this;
+              function norm(s) { return self.normalizeLabel(s); }
+              if (typeof v === 'string') return norm(v);
               if (typeof v === 'number') {
-                var nn = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+                var nn = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
                 var midi = Math.round(v) + 60;
                 var oct = Math.floor(midi / 12) - 1;
-                return nn[((midi % 12) + 12) % 12] + oct;
+                return norm(nn[((midi % 12) + 12) % 12] + oct);
               }
               if (typeof v !== 'object') return null;
-              if (v.note) return String(v.note);
-              if (v.s) return String(v.s);
+              if (v.note) return norm(String(v.note));
+              if (v.s && !v.note) return String(v.s);  // drum/sample labels don't normalize
               if (v.n != null) {
-                var nn = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+                var nn = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
                 var midi = parseInt(v.n) + 60;
                 var oct = Math.floor(midi / 12) - 1;
-                return nn[((midi % 12) + 12) % 12] + oct;
+                return norm(nn[((midi % 12) + 12) % 12] + oct);
               }
-              if (v.value != null) return String(v.value);
-              if (v.freq) return Math.round(12 * Math.log2(v.freq / 440) + 69) + '';
+              if (v.value != null) return norm(String(v.value));
+              if (v.freq) return String(Math.round(12 * Math.log2(v.freq / 440) + 69));
               return null;
             },
 
@@ -597,8 +613,9 @@
               if (!pattern || typeof pattern.queryArc !== 'function') return;
 
               try {
-                // Query 32 cycles to capture pattern evolution (e.g., .add() across many cycles)
-                var haps = pattern.queryArc(0, 32);
+                // Query 128 cycles to capture pattern evolution (e.g., .add() across many cycles)
+                var haps = pattern.queryArc(0, 128);
+                this.capturedCycles = 128;
 
                 this.events = [];
                 this.rows = [];
@@ -729,7 +746,8 @@
         this.events.forEach(function(ev) {
           var midi = self.noteToMidi(ev.label);
           if (midi !== null) {
-            var oct = Math.floor(midi / 12);
+            // Invert noteToMidi: (oct+1)*12+base → oct = floor(midi/12) - 1
+            var oct = Math.floor(midi / 12) - 1;
             if (oct < minOctave) minOctave = oct;
             if (oct > maxOctave) maxOctave = oct;
           }
@@ -777,11 +795,34 @@
         // Auto-scroll to follow notes in visible window
         if (this.events && this.events.length > 0) {
           var self = this;
-          // Find events in the current cycle and next cycle
+          var capturedLen = this.capturedCycles || 128;
+          
+          // Use modulo wrapping so the scroll keeps working past the captured range
+          var wrappedCycle = currentCycle % capturedLen;
+          
+          // Search a wider window (current cycle ± 2) to catch sparse patterns
           var visibleEvents = this.events.filter(function(ev) {
-            var evCycle = Math.floor(ev.time);
-            return evCycle === currentCycle || evCycle === currentCycle + 1;
+            var evCycle = Math.floor(ev.time) % capturedLen;
+            for (var offset = -2; offset <= 2; offset++) {
+              if (evCycle === ((wrappedCycle + offset) % capturedLen + capturedLen) % capturedLen) return true;
+            }
+            return false;
           });
+          
+          // If window search found nothing, find the nearest future event
+          if (visibleEvents.length === 0) {
+            var nearestDist = Infinity;
+            var nearestEv = null;
+            this.events.forEach(function(ev) {
+              var evCycle = Math.floor(ev.time) % capturedLen;
+              var dist = ((evCycle - wrappedCycle) % capturedLen + capturedLen) % capturedLen;
+              if (dist < nearestDist) {
+                nearestDist = dist;
+                nearestEv = ev;
+              }
+            });
+            if (nearestEv) visibleEvents = [nearestEv];
+          }
           
           if (visibleEvents.length > 0) {
             // Find min/max MIDI of events in visible cycle range
@@ -793,8 +834,6 @@
                 if (midi > maxMidi) maxMidi = midi;
               }
             });
-          
-            console.log('[pn] auto-scroll:', visibleEvents.length, 'events, MIDI range:', minMidi, '-', maxMidi, 'current cycle:', currentCycle);
           
             if (minMidi !== Infinity && maxMidi !== -Infinity) {
               // Find row indices for the highest and lowest notes
@@ -808,24 +847,26 @@
             
               // Calculate the center of the range
               var rangeSpan = bottomRow - topRow + 1;
-              var octavesToShow = 8; // Always show 8 notes
               var centerRow = topRow + Math.floor(rangeSpan / 2);
             
               // Calculate scroll offset to center the range
-              var rowsToShow = octavesToShow; // Number of actual note rows visible
-              var totalVisibleHeight = rowsToShow * rowH;
+              var totalVisibleHeight = 8 * rowH;
               var viewportCenterY = visibleHeight / 2;
             
-              // Center vertically: the range should be centered in the viewport
               var targetScrollY = (centerRow * rowH) - viewportCenterY + (totalVisibleHeight / 2);
             
-              console.log('[pn] scroll calc: topRow=' + topRow, 'bottomRow=' + bottomRow, 'centerRow=' + centerRow, 'target=' + targetScrollY.toFixed(1), 'current=' + this.scrollY.toFixed(1));
-            
-              // Smooth scroll towards target
-              this.scrollY += (targetScrollY - this.scrollY) * 0.08;
+              // Clamp target to valid range
+              var maxScrollLimit = Math.max(0, nRows * rowH - visibleHeight);
+              targetScrollY = Math.max(0, Math.min(maxScrollLimit, targetScrollY));
+              
+              // Aggressive smoothing: instant jump if far away, otherwise smooth
+              var delta = targetScrollY - this.scrollY;
+              if (Math.abs(delta) > rowH * 3) {
+                this.scrollY = targetScrollY;
+              } else {
+                this.scrollY += delta * 0.15;
+              }
             }
-          } else {
-            console.log('[pn] auto-scroll: no events found for cycle', currentCycle, 'or', currentCycle + 1);
           }
         }
         
