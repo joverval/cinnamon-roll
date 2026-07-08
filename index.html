@@ -784,7 +784,7 @@
           });
           
           if (visibleEvents.length > 0) {
-            // Find min/max MIDI of events in this cycle
+            // Find min/max MIDI of events in visible cycle range
             var minMidi = Infinity, maxMidi = -Infinity;
             visibleEvents.forEach(function(ev) {
               var midi = self.noteToMidi(ev.label);
@@ -793,7 +793,9 @@
                 if (midi > maxMidi) maxMidi = midi;
               }
             });
-            
+          
+            console.log('[pn] auto-scroll:', visibleEvents.length, 'events, MIDI range:', minMidi, '-', maxMidi, 'current cycle:', currentCycle);
+          
             if (minMidi !== Infinity && maxMidi !== -Infinity) {
               // Find row indices for the highest and lowest notes
               // allRows is ordered high to low, so row 0 is highest, nRows-1 is lowest
@@ -803,23 +805,27 @@
                 if (midi === maxMidi) topRow = r;
                 if (midi === minMidi) bottomRow = r;
               }
-              
+            
               // Calculate the center of the range
               var rangeSpan = bottomRow - topRow + 1;
               var octavesToShow = 8; // Always show 8 notes
               var centerRow = topRow + Math.floor(rangeSpan / 2);
-              
+            
               // Calculate scroll offset to center the range
               var rowsToShow = octavesToShow; // Number of actual note rows visible
               var totalVisibleHeight = rowsToShow * rowH;
               var viewportCenterY = visibleHeight / 2;
-              
+            
               // Center vertically: the range should be centered in the viewport
               var targetScrollY = (centerRow * rowH) - viewportCenterY + (totalVisibleHeight / 2);
-              
+            
+              console.log('[pn] scroll calc: topRow=' + topRow, 'bottomRow=' + bottomRow, 'centerRow=' + centerRow, 'target=' + targetScrollY.toFixed(1), 'current=' + this.scrollY.toFixed(1));
+            
               // Smooth scroll towards target
               this.scrollY += (targetScrollY - this.scrollY) * 0.08;
             }
+          } else {
+            console.log('[pn] auto-scroll: no events found for cycle', currentCycle, 'or', currentCycle + 1);
           }
         }
         
