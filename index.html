@@ -757,14 +757,6 @@
         ctx.fillStyle = '#1a1a1f';
         ctx.fillRect(0, 0, w, h);
 
-        // Per-cycle scheduler debug (once per cycle change)
-        var nowCycle = -1;
-        try { var gt = getTime ? getTime() : 0; nowCycle = typeof gt.floor === 'function' ? Number(gt.floor()) : Math.floor(Number(gt)); } catch(e) {}
-        if (nowCycle !== this._lastCycle) {
-          this._lastCycle = nowCycle;
-          console.log('[cycle ' + nowCycle + ']', schedulerDebug());
-        }
-
         if (!this.events || this.events.length === 0) return;
 
         // ── Sliding 12-semitone window: follows densest note cluster ──
@@ -1035,27 +1027,6 @@
     /* Piano roll: evaluate() returns the Pattern; we queryArc() it directly to get hap events.
      * No code wrapping, no hooks, no CustomEvents needed. */
 
-    /* ── Scheduler debug helper ── */
-    function schedulerDebug() {
-      if (!repl) return 'repl=null';
-      var s = repl.scheduler;
-      if (!s) return 'scheduler=null';
-      var t, cycle, phase;
-      try { t = getTime ? getTime() : null; } catch(e) { t = null; }
-      if (t && typeof t.floor === 'function') {
-        cycle = Number(t.floor());
-        phase = Number(t.sub(t.floor()));
-      } else if (t !== null) {
-        cycle = Math.floor(t);
-        phase = t - cycle;
-      } else {
-        cycle = '?'; phase = '?';
-      }
-      return 'cycle=' + cycle + ' phase=' + (typeof phase === 'number' ? phase.toFixed(3) : phase) +
-        ' startTime=' + (s.startTime ? Number(s.startTime).toFixed(1) : s.startTime) +
-        ' cps=' + (function() { try { var v = Number(cps()); return isFinite(v) ? v.toFixed(2) : v; } catch(e) { return 'err'; } })();
-    }
-
     async function play() {
       if (!engineReady) {
         setStatus('Samples still loading...', 'error');
@@ -1074,7 +1045,6 @@
         if (repl && repl.scheduler && repl.scheduler.clock) {
           try {
             repl.scheduler.lastBegin = repl.scheduler.clock.now();
-            console.log('[play] reset lastBegin to clock.now()');
           } catch(e) {}
         }
 
@@ -1083,7 +1053,6 @@
         // ticking forward before the pattern starts.
         var fullCode = 'setcps(' + defaultCps + ');\n' + code;
         var evalPattern = await evaluate(fullCode);
-        console.log('[play] scheduler state after evaluate:', schedulerDebug());
 
         var pattern = null;
         if (repl && repl.pattern) {
@@ -1093,8 +1062,6 @@
         } else if (evalPattern && typeof evalPattern.queryArc === 'function') {
           pattern = evalPattern;
         }
-        
-        console.log('[pn] final pattern:', pattern ? 'found' : 'none');
 
         isPlaying = true;
         isPaused = false;
@@ -1132,7 +1099,6 @@
         // and it carries over across stop/start cycles. When it's 0 at stop
         // time, the next setcps() keeps it at 0 regardless of tempo changes.
         repl.scheduler.num_cycles_at_cps_change = 0;
-        console.log('[stop] zeroed num_cycles_at_cps_change');
       }
       
       isPlaying = false;
