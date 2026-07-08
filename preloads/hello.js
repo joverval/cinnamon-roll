@@ -1,5 +1,5 @@
 $: note("c3 e3 g3 b3")
-  .s("triangle")
+  .s("piano")
   .room(0.4)
   .delay(0.2)
   .jux(rev)
