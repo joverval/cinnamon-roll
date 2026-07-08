@@ -1088,27 +1088,18 @@
     }
 
     function stop() {
-      // Stop resets the entire environment: mute, reset clock, reset tempo,
-      // clear patterns. Next play() will start from the beginning.
-      // The textarea content is preserved — user's code stays put.
+      // Full stop: silence audio, tear down scheduler, reset tempo.
+      // Next play() will create a fresh scheduler starting at cycle 0.
       try { evaluate('hush()'); } catch(e) {}
       try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
       
-      // Reset the clock to 0 - Strudel uses a scheduler with a time property
-      if (repl && repl.scheduler) {
-        if (typeof repl.scheduler.resetTime === 'function') {
-          repl.scheduler.resetTime();
-        }
-        repl.scheduler.time = 0;
-      }
-      if (repl && typeof repl.reset === 'function') {
-        repl.reset();
-      } else if (typeof resetClock !== 'undefined') {
-        resetClock();
+      // Tear down the scheduler completely. Strudel's repl.stop()
+      // properly stops the scheduler so a new evaluate() starts from 0.
+      if (repl && typeof repl.stop === 'function') {
+        repl.stop();
       }
       
-      // Reset tempo back to the default captured at init time.
-      // setcps() mutates the global scheduler, not the pattern — persists across plays.
+      // Reset tempo back to the default (setcps mutates global scheduler state)
       try {
         if (typeof setcps === 'function') {
           setcps(defaultCps);
