@@ -739,43 +739,85 @@
 
         if (!this.events || this.events.length === 0) return;
 
-        // Find the octave range from active notes
-        var minOctave = 4;
-        var maxOctave = 4;
-        var self = this;
-        this.events.forEach(function(ev) {
-          var midi = self.noteToMidi(ev.label);
-          if (midi !== null) {
-            // Invert noteToMidi: (oct+1)*12+base → oct = floor(midi/12) - 1
-            var oct = Math.floor(midi / 12) - 1;
-            if (oct < minOctave) minOctave = oct;
-            if (oct > maxOctave) maxOctave = oct;
-          }
-        });
-        var octaveSpan = maxOctave - minOctave + 1;
-        
-        // Generate all 12 semitone rows per octave (from high to low)
+        // ── Octave tracking: always show exactly one octave, slide to follow notes ──
         var noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        var BLACK_FACTOR = 0.5;
+        var ROWS_PER_OCTAVE = 12;
+        var WHITES_PER_OCTAVE = 7, BLACKS_PER_OCTAVE = 5;
+
+        // Initialize display octave
+        if (typeof this.displayOctave !== 'number') this.displayOctave = 4;
+
+        // Get absolute time
+        var absoluteTime = getTime ? getTime() : 0;
+        if (absoluteTime && typeof absoluteTime.floor === 'function') {
+          absoluteTime = Number(absoluteTime);
+        }
+        var currentCycle = Math.floor(absoluteTime);
+        var ph = absoluteTime - currentCycle;
+        var labelW = 60;
+        var gridW = w - labelW - 8;
+        var PLAYHEAD_X = labelW + 4;
+
+        // Determine target octave from notes near the playhead
+        var targetOctave = Math.round(this.displayOctave);
+        if (this.events && this.events.length > 0) {
+          var capturedLen = this.capturedCycles || 128;
+          var wrappedCycle = currentCycle % capturedLen;
+
+          var visibleEvents = this.events.filter(function(ev) {
+            var evCycle = Math.floor(ev.time) % capturedLen;
+            for (var offset = -2; offset <= 2; offset++) {
+              if (evCycle === ((wrappedCycle + offset) % capturedLen + capturedLen) % capturedLen) return true;
+            }
+            return false;
+          });
+
+          if (visibleEvents.length === 0) {
+            var nearestDist = Infinity;
+            var nearestEv = null;
+            this.events.forEach(function(ev) {
+              var evCycle = Math.floor(ev.time) % capturedLen;
+              var dist = ((evCycle - wrappedCycle) % capturedLen + capturedLen) % capturedLen;
+              if (dist < nearestDist) { nearestDist = dist; nearestEv = ev; }
+            });
+            if (nearestEv) visibleEvents = [nearestEv];
+          }
+
+          if (visibleEvents.length > 0) {
+            var minMidi = Infinity, maxMidi = -Infinity;
+            var self = this;
+            visibleEvents.forEach(function(ev) {
+              var midi = self.noteToMidi(ev.label);
+              if (midi !== null) {
+                if (midi < minMidi) minMidi = midi;
+                if (midi > maxMidi) maxMidi = midi;
+              }
+            });
+            if (minMidi !== Infinity) {
+              var centerMidi = (minMidi + maxMidi) / 2;
+              targetOctave = Math.round(centerMidi / 12) - 1;
+            }
+          }
+        }
+
+        // Smooth octave transitions
+        if (!isFinite(targetOctave)) targetOctave = 4;
+        this.displayOctave += (targetOctave - this.displayOctave) * 0.12;
+
+        // Generate TWO octaves of rows (24 total) so we can scroll smoothly between them.
+        // Exactly 12 rows (one octave) fill the visible canvas.
+        var octaveBase = Math.floor(this.displayOctave);
         var allRows = [];
-        for (var oct = maxOctave; oct >= minOctave; oct--) {
+        for (var oct = octaveBase + 1; oct >= octaveBase; oct--) {
           for (var i = 11; i >= 0; i--) {
             allRows.push(noteNames[i] + oct);
           }
         }
-        
-        var nRows = allRows.length;
-        var labelW = 60;
-        var gridW = w - labelW - 8;
-        var visibleHeight = h;
-        
-        // Build row layout with variable heights: white keys full, black keys half
-        var BLACK_FACTOR = 0.5;
-        var nWhites = 0, nBlacks = 0;
-        for (var ri = 0; ri < nRows; ri++) {
-          var m = this.noteToMidi(allRows[ri]);
-          (m !== null && this.isBlackKey(m)) ? nBlacks++ : nWhites++;
-        }
-        var unitH = visibleHeight / (nWhites + nBlacks * BLACK_FACTOR);
+        var nRows = allRows.length; // 24
+
+        // Size so one octave (12 rows) fills the visible height
+        var unitH = h / (WHITES_PER_OCTAVE + BLACKS_PER_OCTAVE * BLACK_FACTOR);
         var rowLayout = [];
         var cumY = 0;
         for (var ri = 0; ri < nRows; ri++) {
@@ -786,110 +828,23 @@
           rowLayout.push({ label: label, midi: midi, isBlack: isBlack, y: cumY, h: rh });
           cumY += rh;
         }
-        var totalHeight = cumY;
-        
+        var totalHeight = cumY; // should be ~2h
+        var visibleHeight = h;
+
+        // scrollY slides between octaves: fracOctave goes 0→1 as we transition
+        var fracOctave = this.displayOctave - octaveBase;
+        this.scrollY = fracOctave * h;
+
         // Store for scroll clamping
         this.totalHeight = totalHeight;
         this.visibleHeight = visibleHeight;
-        
-        // Debug: log what we're rendering
+
+        // Debug
         if (!this._lastDrawLog || performance.now() - this._lastDrawLog > 2000) {
-          console.log('[pn] DRAW: allRows =', allRows);
-          console.log('[pn] DRAW: nRows =', nRows, 'unitH =', unitH.toFixed(1), 'totalHeight =', totalHeight.toFixed(1));
-          console.log('[pn] DRAW: scrollY =', this.scrollY.toFixed(1), 'visibleHeight =', visibleHeight.toFixed(1));
+          console.log('[pn] DRAW: octaveBase=' + octaveBase + ' displayOctave=' + this.displayOctave.toFixed(2) +
+            ' targetOctave=' + targetOctave + ' allRows=' + allRows.slice(0,12).join(',') + '...');
           this._lastDrawLog = performance.now();
         }
-        
-        // Get absolute time to calculate actual cycle number
-        var absoluteTime = getTime ? getTime() : 0;
-        if (absoluteTime && typeof absoluteTime.floor === 'function') {
-          // Fraction object - convert to number
-          absoluteTime = Number(absoluteTime);
-        }
-        var currentCycle = Math.floor(absoluteTime);
-        var ph = absoluteTime - currentCycle; // Position within current cycle (0 to 1)
-        var PLAYHEAD_X = labelW + 4;
-        
-        // Auto-scroll to follow notes in visible window
-        if (this.events && this.events.length > 0) {
-          var self = this;
-          var capturedLen = this.capturedCycles || 128;
-          
-          // Use modulo wrapping so the scroll keeps working past the captured range
-          var wrappedCycle = currentCycle % capturedLen;
-          
-          // Search a wider window (current cycle ± 2) to catch sparse patterns
-          var visibleEvents = this.events.filter(function(ev) {
-            var evCycle = Math.floor(ev.time) % capturedLen;
-            for (var offset = -2; offset <= 2; offset++) {
-              if (evCycle === ((wrappedCycle + offset) % capturedLen + capturedLen) % capturedLen) return true;
-            }
-            return false;
-          });
-          
-          // If window search found nothing, find the nearest future event
-          if (visibleEvents.length === 0) {
-            var nearestDist = Infinity;
-            var nearestEv = null;
-            this.events.forEach(function(ev) {
-              var evCycle = Math.floor(ev.time) % capturedLen;
-              var dist = ((evCycle - wrappedCycle) % capturedLen + capturedLen) % capturedLen;
-              if (dist < nearestDist) {
-                nearestDist = dist;
-                nearestEv = ev;
-              }
-            });
-            if (nearestEv) visibleEvents = [nearestEv];
-          }
-          
-          if (visibleEvents.length > 0) {
-            // Find min/max MIDI of events in visible cycle range
-            var minMidi = Infinity, maxMidi = -Infinity;
-            visibleEvents.forEach(function(ev) {
-              var midi = self.noteToMidi(ev.label);
-              if (midi !== null) {
-                if (midi < minMidi) minMidi = midi;
-                if (midi > maxMidi) maxMidi = midi;
-              }
-            });
-          
-            if (minMidi !== Infinity && maxMidi !== -Infinity) {
-              // Find row indices for the highest and lowest notes
-              // allRows is ordered high to low, so row 0 is highest, nRows-1 is lowest
-              var topRow = 0, bottomRow = nRows - 1;
-              for (var r = 0; r < nRows; r++) {
-                var midi = this.noteToMidi(allRows[r]);
-                if (midi === maxMidi) topRow = r;
-                if (midi === minMidi) bottomRow = r;
-              }
-            
-              // Calculate the center of the range
-              var rangeSpan = bottomRow - topRow + 1;
-              var centerRow = topRow + Math.floor(rangeSpan / 2);
-            
-              // Calculate scroll offset to center the range using rowLayout positions
-              var viewportCenterY = visibleHeight / 2;
-              var targetRowLayout = rowLayout[centerRow];
-              var targetScrollY = targetRowLayout.y - viewportCenterY + (targetRowLayout.h / 2);
-            
-              // Clamp target to valid range
-              var maxScrollLimit = Math.max(0, totalHeight - visibleHeight);
-              targetScrollY = Math.max(0, Math.min(maxScrollLimit, targetScrollY));
-              
-              // Aggressive smoothing: instant jump if far away, otherwise smooth
-              var delta = targetScrollY - this.scrollY;
-              if (Math.abs(delta) > unitH * 2) {
-                this.scrollY = targetScrollY;
-              } else {
-                this.scrollY += delta * 0.15;
-              }
-            }
-          }
-        }
-        
-        // Clamp scrollY
-        var maxScroll = Math.max(0, totalHeight - visibleHeight);
-        this.scrollY = Math.max(0, Math.min(maxScroll, this.scrollY));
 
         // ─── Label column (drawn OUTSIDE grid clip so labels are always visible) ───
         for (var r = 0; r < nRows; r++) {
@@ -900,7 +855,6 @@
           if (y + rl.h < 0 || y > visibleHeight) continue;
 
           // Label column background: black keys darker, narrower
-          var labelX = labelW;
           if (rl.isBlack) {
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             // Only fill a narrower strip for black keys (left side)
