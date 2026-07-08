@@ -551,7 +551,7 @@
                 console.log("[pn] pattern has no queryArc method");
                 return;
               }
-
+              
               try {
                 // Query one full cycle (0 to 1)
                 // Also query the NEXT cycle to see if we're getting haps from cycle 1 instead of 0
@@ -581,11 +581,14 @@
                 this.events = [];
                 this.rows = [];
                 var self = this;
+                
+                // Track which labels we've already seen to avoid duplicates
+                var seenLabels = {};
 
                 haps.forEach(function(hap) {
                   // Skip non-onset haps (rests, tied notes from previous cycle)
                   if (!hap.hasOnset || !hap.hasOnset()) return;
-
+                  
                   var label = self.labelFromValue(hap.value);
                   console.log("[pn] hap:", {
                     label: label,
@@ -597,6 +600,10 @@
                     duration: hap.duration ? String(hap.duration) : null,
                   });
                   if (!label) return;
+                  
+                  // Skip if we've already seen this label (deduplicate .jux, .rev, etc.)
+                  if (seenLabels[label]) return;
+                  seenLabels[label] = true;
                   
                   // Get cycle-relative position (0-1)
                   var fract = hap.part && hap.part.begin;
@@ -627,43 +634,44 @@
                         time = diff.valueOf();
                       } else if (typeof diff.toNumber === 'function') {
                         time = diff.toNumber();
-                      } else if (diff.n !== undefined && diff.d !== undefined) {
-                        // Manual conversion: n/d * s (sign)
-                        time = (diff.n / diff.d) * (diff.s || 1);
                       } else {
-                        time = Number(diff);
+                        time = Number(String(diff));
                       }
+                    } else if (typeof fract === 'number') {
+                      time = fract;
+                    } else if (typeof fract === 'string') {
+                      time = parseFloat(fract);
                     } else if (fract) {
-                      // Fallback: try numeric conversion
-                      time = Number(fract);
-                      if (!isNaN(time)) {
-                        time = time % 1;
-                      }
+                      time = Number(String(fract));
                     }
                     
                     console.log("[pn] calculated time:", { label: label, time: time, time_type: typeof time });
                   } catch (e) {
                     console.warn("[pn] time calculation error:", e);
                     // Last resort: parse string representation
-                    var fractStr = String(fract);
-                    var match = fractStr.match(/[\d.]+/);
-                    if (match) {
-                      time = parseFloat(match[0]) % 1;
-                    } else {
-                      time = 0;
+                    try {
+                      time = parseFloat(String(fract));
+                    } catch (e2) {
+                      // ignore
                     }
                   }
                   if (!isFinite(time)) time = 0;
-                  if (time < 0) time += 1;
-                  if (time >= 1) time -= 1;
-
+                  
                   self.events.push({ time: time, label: String(label) });
-
+                  
                   if (self.rows.indexOf(String(label)) === -1) {
                     self.rows.push(String(label));
                   }
                 });
-
+                
+                this.rows.sort();
+                console.log("[pn] Built punchcard:", this.events.length, "events,", this.rows.length, "rows:", this.rows);
+                console.log("[pn] Events:", this.events.map(e => ({ label: e.label, time: e.time.toFixed(3) })));
+              } catch(e) {
+                console.error("[pn] buildFromPattern error:", e);
+                console.error(e.stack);
+              }
+            },
                 this.rows.sort();
                 console.log("[pn] Built punchcard:", this.events.length, "events,", this.rows.length, "rows:", this.rows);
               } catch(e) {
@@ -695,6 +703,13 @@
           var cl = cps ? (1 / (cps() || 1)) : 1;
           if (isFinite(cl) && cl > 0) this.cycleLen = cl;
         } catch(e) {}
+
+        // DEBUG: Log events array state
+        if (this.events.length > 0 && this._lastLogTime !== Math.floor(performance.now() / 2000)) {
+          console.log('[pn] draw: events array =', this.events.map(e => ({ label: e.label, time: e.time.toFixed(3) })));
+          console.log('[pn] draw: playhead =', this.getPlayhead().toFixed(3), 'cycleLen =', this.cycleLen);
+          this._lastLogTime = Math.floor(performance.now() / 2000);
+        }
 
         var ctx = punchcardCtx;
         var dpr = window.devicePixelRatio || 1;
@@ -744,6 +759,12 @@
         var rowOffset = (this.viewRow - startRow) * rowH;
         var endRow = Math.min(nRows, startRow + visibleRows + 1);
 
+        // DEBUG: Log rendering positions for first frame
+        var debugThisFrame = !this._debuggedFirstFrame && this.events.length > 0;
+        if (debugThisFrame) {
+          console.log('[pn] RENDER DEBUG: playhead =', ph.toFixed(3), 'gridW =', gridW.toFixed(0), 'PLAYHEAD_X =', PLAYHEAD_X.toFixed(0));
+        }
+
         for (var r = startRow; r < endRow; r++) {
           var y = (r - startRow) * rowH - rowOffset;
 
@@ -770,6 +791,11 @@
               var ex = PLAYHEAD_X + pixelOffset;
               var ew = Math.max(3, gridW / 80);
               var eh = rowH - 2;
+
+              // DEBUG: Log note positions on first frame
+              if (debugThisFrame && cycle === 0) {
+                console.log('[pn] RENDER: note', ev.label, 'time', ev.time.toFixed(3), 'relTime', relTime.toFixed(3), 'ex', ex.toFixed(1), 'cycle', cycle);
+              }
 
               if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
 
