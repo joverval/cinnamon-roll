@@ -605,8 +605,13 @@
 
     clearError();
     try {
-      // Only visualize if code explicitly opts in
-      var shouldVisualize = /\b(pianoroll|punchcard)\b/.test(code);
+      // Only visualize if code contains ._punchcard(...) — strip it before
+      // evaluating since it's a client-side hint, not a real Strudel function.
+      var shouldVisualize = /\._punchcard\s*\(/.test(code);
+      var cleanCode = shouldVisualize
+        ? code.replace(/\._punchcard\s*\([^)]*\)/g, '')
+        : code;
+
       if (shouldVisualize) {
         punchcard.start();
       } else {
@@ -625,7 +630,7 @@
       // Bake cps reset into the evaluated code so setcps() and the pattern
       // run atomically — avoids the cyclist restarting between calls and
       // ticking forward before the pattern starts.
-      var fullCode = 'setcps(' + defaultCps + ');\n' + code;
+      var fullCode = 'setcps(' + defaultCps + ');\n' + cleanCode;
       var evalPattern = await evaluate(fullCode);
 
       var pattern = null;
