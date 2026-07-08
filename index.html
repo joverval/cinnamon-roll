@@ -766,9 +766,27 @@
         var nRows = allRows.length;
         var labelW = 60;
         var gridW = w - labelW - 8;
-        var rowH = h / 8;  // Always show exactly 8 notes (one octave)
-        var totalHeight = nRows * rowH;
         var visibleHeight = h;
+        
+        // Build row layout with variable heights: white keys full, black keys half
+        var BLACK_FACTOR = 0.5;
+        var nWhites = 0, nBlacks = 0;
+        for (var ri = 0; ri < nRows; ri++) {
+          var m = this.noteToMidi(allRows[ri]);
+          (m !== null && this.isBlackKey(m)) ? nBlacks++ : nWhites++;
+        }
+        var unitH = visibleHeight / (nWhites + nBlacks * BLACK_FACTOR);
+        var rowLayout = [];
+        var cumY = 0;
+        for (var ri = 0; ri < nRows; ri++) {
+          var label = allRows[ri];
+          var midi = this.noteToMidi(label);
+          var isBlack = midi !== null && this.isBlackKey(midi);
+          var rh = isBlack ? unitH * BLACK_FACTOR : unitH;
+          rowLayout.push({ label: label, midi: midi, isBlack: isBlack, y: cumY, h: rh });
+          cumY += rh;
+        }
+        var totalHeight = cumY;
         
         // Store for scroll clamping
         this.totalHeight = totalHeight;
@@ -777,7 +795,7 @@
         // Debug: log what we're rendering
         if (!this._lastDrawLog || performance.now() - this._lastDrawLog > 2000) {
           console.log('[pn] DRAW: allRows =', allRows);
-          console.log('[pn] DRAW: nRows =', nRows, 'rowH =', rowH.toFixed(1), 'totalHeight =', totalHeight.toFixed(1));
+          console.log('[pn] DRAW: nRows =', nRows, 'unitH =', unitH.toFixed(1), 'totalHeight =', totalHeight.toFixed(1));
           console.log('[pn] DRAW: scrollY =', this.scrollY.toFixed(1), 'visibleHeight =', visibleHeight.toFixed(1));
           this._lastDrawLog = performance.now();
         }
@@ -849,19 +867,18 @@
               var rangeSpan = bottomRow - topRow + 1;
               var centerRow = topRow + Math.floor(rangeSpan / 2);
             
-              // Calculate scroll offset to center the range
-              var totalVisibleHeight = 8 * rowH;
+              // Calculate scroll offset to center the range using rowLayout positions
               var viewportCenterY = visibleHeight / 2;
-            
-              var targetScrollY = (centerRow * rowH) - viewportCenterY + (totalVisibleHeight / 2);
+              var targetRowLayout = rowLayout[centerRow];
+              var targetScrollY = targetRowLayout.y - viewportCenterY + (targetRowLayout.h / 2);
             
               // Clamp target to valid range
-              var maxScrollLimit = Math.max(0, nRows * rowH - visibleHeight);
+              var maxScrollLimit = Math.max(0, totalHeight - visibleHeight);
               targetScrollY = Math.max(0, Math.min(maxScrollLimit, targetScrollY));
               
               // Aggressive smoothing: instant jump if far away, otherwise smooth
               var delta = targetScrollY - this.scrollY;
-              if (Math.abs(delta) > rowH * 3) {
+              if (Math.abs(delta) > unitH * 2) {
                 this.scrollY = targetScrollY;
               } else {
                 this.scrollY += delta * 0.15;
@@ -876,28 +893,37 @@
 
         // ─── Label column (drawn OUTSIDE grid clip so labels are always visible) ───
         for (var r = 0; r < nRows; r++) {
-          var label = allRows[r];
-          var midi = this.noteToMidi(label);
-          var isBlack = midi !== null && this.isBlackKey(midi);
-          var y = r * rowH - this.scrollY;
+          var rl = rowLayout[r];
+          var y = rl.y - this.scrollY;
           
           // Skip rows outside visible area
-          if (y + rowH < 0 || y > visibleHeight) continue;
+          if (y + rl.h < 0 || y > visibleHeight) continue;
 
-          // Label column background: black keys darker, white keys lighter
-          if (isBlack) {
+          // Label column background: black keys darker, narrower
+          var labelX = labelW;
+          if (rl.isBlack) {
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            // Only fill a narrower strip for black keys (left side)
+            ctx.fillRect(0, y, labelW - 10, rl.h);
           } else {
             ctx.fillStyle = 'rgba(255,255,255,0.05)';
+            ctx.fillRect(0, y, labelW, rl.h);
           }
-          ctx.fillRect(0, y, labelW, rowH);
 
-          // Label text
-          ctx.fillStyle = isBlack ? '#888899' : '#bbbcc8';
-          ctx.font = '11px monospace';
-          ctx.textAlign = 'right';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(label, labelW - 6, y + rowH / 2);
+          // Label text: black keys indented left, smaller
+          if (rl.isBlack) {
+            ctx.fillStyle = '#777788';
+            ctx.font = '9px monospace';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(rl.label, labelW - 10, y + rl.h / 2);
+          } else {
+            ctx.fillStyle = '#bbbcc8';
+            ctx.font = '11px monospace';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(rl.label, labelW - 6, y + rl.h / 2);
+          }
         }
 
         // ─── Grid area (clipped so notes don't spill over labels) ───
@@ -908,48 +934,45 @@
 
         // Row backgrounds and separators
         for (var r = 0; r < nRows; r++) {
-          var label = allRows[r];
-          var midi = this.noteToMidi(label);
-          var isBlack = midi !== null && this.isBlackKey(midi);
-          var y = r * rowH - this.scrollY;
+          var rl = rowLayout[r];
+          var y = rl.y - this.scrollY;
           
           // Skip rows outside visible area
-          if (y + rowH < 0 || y > visibleHeight) continue;
+          if (y + rl.h < 0 || y > visibleHeight) continue;
 
           // Row background: black keys darker
-          if (isBlack) {
+          if (rl.isBlack) {
             ctx.fillStyle = 'rgba(0,0,0,0.2)';
           } else {
             ctx.fillStyle = 'rgba(255,255,255,0.03)';
           }
-          ctx.fillRect(labelW + 4, y, gridW, rowH);
+          ctx.fillRect(labelW + 4, y, gridW, rl.h);
 
           // Row separator
           ctx.strokeStyle = 'rgba(255,255,255,0.08)';
           ctx.lineWidth = 0.5;
           ctx.beginPath();
-          ctx.moveTo(labelW + 4, y + rowH);
-          ctx.lineTo(labelW + 4 + gridW, y + rowH);
+          ctx.moveTo(labelW + 4, y + rl.h);
+          ctx.lineTo(labelW + 4 + gridW, y + rl.h);
           ctx.stroke();
         }
 
         // Note events - draw using absolute time positions
-        // currentCycle is already calculated above
         for (var r = 0; r < nRows; r++) {
-          var rowLabel = allRows[r];
-          var y = r * rowH - this.scrollY;
+          var rl = rowLayout[r];
+          var y = rl.y - this.scrollY;
           
           // Skip rows outside visible area
-          if (y + rowH < 0 || y > visibleHeight) continue;
+          if (y + rl.h < 0 || y > visibleHeight) continue;
           
           (this.events || []).forEach(function(ev) {
-            if (ev.label !== rowLabel) return;
+            if (ev.label !== rl.label) return;
             // Calculate relative position from current playhead position
             var relTime = ev.time - absoluteTime;
             var pixelOffset = relTime * gridW;
             var ex = PLAYHEAD_X + pixelOffset;
             var ew = Math.max(3, gridW / 80);
-            var eh = rowH - 2;
+            var eh = rl.h - 2;
             
             if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
 
