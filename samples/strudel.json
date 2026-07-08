@@ -67,6 +67,11 @@
   "padlong": [
     "padlong/atmospheric-abduction.wav"
   ],
+  "piano": [
+    "piano/piano_01.wav",
+    "piano/piano_02.wav",
+    "piano/piano_03.wav"
+  ],
   "sax": [
     "sax/000_notes121a.wav",
     "sax/001_notes121a2.wav",
