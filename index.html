@@ -609,6 +609,7 @@
                   if (!hap.hasOnset || !hap.hasOnset()) return;
 
                   var label = self.labelFromValue(hap.value);
+                  console.log('[pn] DEBUG: hap.value =', hap.value, '→ label =', label);
                   if (!label) return;
 
                   // Get absolute time position (across cycles)
@@ -675,6 +676,7 @@
                 }
                 
                 console.log('[pn] Built punchcard:', this.events.length, 'events,', this.rows.length, 'rows:', this.rows);
+                console.log('[pn] Row metadata:', this.rowMeta.map(r => r.label + '(' + r.midi + (r.isBlack ? '#' : '') + ')').join(', '));
               } catch (e) {
                 console.error('[pn] buildFromPattern error:', e);
               }
@@ -753,6 +755,14 @@
         // Store for scroll clamping
         this.totalHeight = totalHeight;
         this.visibleHeight = visibleHeight;
+        
+        // Debug: log what we're rendering
+        if (!this._lastDrawLog || performance.now() - this._lastDrawLog > 2000) {
+          console.log('[pn] DRAW: allRows =', allRows);
+          console.log('[pn] DRAW: nRows =', nRows, 'rowH =', rowH.toFixed(1), 'totalHeight =', totalHeight.toFixed(1));
+          console.log('[pn] DRAW: scrollY =', this.scrollY.toFixed(1), 'visibleHeight =', visibleHeight.toFixed(1));
+          this._lastDrawLog = performance.now();
+        }
         
         var ph = this.getPlayhead();
         var PLAYHEAD_X = labelW + 4;
