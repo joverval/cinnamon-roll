@@ -1114,19 +1114,20 @@
       try { evaluate('hush()'); } catch(e) {}
       try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
       
-      // Stop the scheduler and clear its clock
+      // Stop the scheduler and nuke its internal clock state
       if (repl && repl.scheduler) {
         if (typeof repl.scheduler.stop === 'function') {
           repl.scheduler.stop();
         }
-        console.log('[stop] scheduler keys:', Object.keys(repl.scheduler));
-        console.log('[stop] scheduler internals:', {
-          started: repl.scheduler.started,
-          startTime: repl.scheduler.startTime,
-          _startTime: repl.scheduler._startTime,
-          cyclist: repl.scheduler.cyclist ? Object.keys(repl.scheduler.cyclist) : null
-        });
+        // Reset all internal time-tracking state so the next start
+        // begins at cycle 0, not wherever the clock left off
+        repl.scheduler.lastBegin = undefined;
+        repl.scheduler.lastTick = undefined;
+        repl.scheduler.lastEnd = undefined;
         repl.scheduler.startTime = undefined;
+        repl.scheduler.num_cycles_at_cps_change = 0;
+        console.log('[stop] after nuking clock state:', schedulerDebug());
+        return; // skip the old debug below
       }
       console.log('[stop] after reset:', schedulerDebug());
       
@@ -1257,6 +1258,7 @@
     // Report ready
     console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
       'color:#ff8a8a;font-weight:bold', 'color:#888');
+    console.log('[build] a5139e1-nuke-clock — nuking lastBegin/lastTick/lastEnd on stop');
   })();
   </script>
 </body>
