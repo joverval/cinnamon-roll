@@ -672,13 +672,6 @@
                 console.error(e.stack);
               }
             },
-                this.rows.sort();
-                console.log("[pn] Built punchcard:", this.events.length, "events,", this.rows.length, "rows:", this.rows);
-              } catch(e) {
-                console.error("[pn] buildFromPattern error:", e);
-                console.error(e.stack);
-              }
-            },
 
             stop: function() {
               if (this.animId) {
