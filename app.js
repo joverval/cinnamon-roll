@@ -282,7 +282,7 @@
       return (performance.now() / 1000) % 1;
     },
 
-    /** Find the 12-semitone window [top-11, top] with the most notes.
+    /** Find the 15-semitone window [top-14, top] with the most notes.
      *  Returns the top MIDI of the best window (integer). */
     findBestWindow: function(events, fallback) {
       var midis = [];
@@ -301,11 +301,11 @@
 
       var bestTop = fallback;
       var bestCount = 0;
-      // Try every possible 12-semitone window (top from maxM down to minM+11)
-      for (var top = maxM; top >= minM + 11; top--) {
+      // Try every possible 15-semitone window (top from maxM down to minM+14)
+      for (var top = maxM; top >= minM + 14; top--) {
         var count = 0;
         for (var j = 0; j < midis.length; j++) {
-          if (midis[j] >= top - 11 && midis[j] <= top) count++;
+          if (midis[j] >= top - 14 && midis[j] <= top) count++;
         }
         if (count > bestCount) {
           bestCount = count;
@@ -327,12 +327,12 @@
 
       if (!this.events || this.events.length === 0) return;
 
-      // ── Sliding 12-semitone window: follows densest note cluster ──
+      // ── Sliding 15-semitone window: follows densest note cluster ──
       var noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
       var BLACK_FACTOR = 0.5;
-      var WHITES = 7, BLACKS = 5;
+      var WHITES = 9, BLACKS = 6;
 
-      // Initialize displayTopMidi (top of the 12-note window) — default to B4
+      // Initialize displayTopMidi (top of the 15-note window) — default to B4
       if (typeof this.displayTopMidi !== 'number') this.displayTopMidi = 71;
 
       // Get absolute time
@@ -346,7 +346,7 @@
       var gridW = w - labelW - 8;
       var PLAYHEAD_X = labelW + 4;
 
-      // Find the best 12-note window from events near the playhead
+      // Find the best 15-note window from events near the playhead
       var bestTopMidi = Math.round(this.displayTopMidi);
       if (this.events && this.events.length > 0) {
         var capturedLen = this.capturedCycles || 128;
@@ -380,18 +380,18 @@
       if (!isFinite(bestTopMidi)) bestTopMidi = 71;
       this.displayTopMidi += (bestTopMidi - this.displayTopMidi) * 0.12;
 
-      // Generate 24 rows: 12 above the current window + 12 for the window
+      // Generate 30 rows: 15 above the current window + 15 for the window
       // This gives smooth scroll room in both directions
       var topBase = Math.floor(this.displayTopMidi);
       var allRows = [];
-      for (var midi = topBase + 11; midi >= topBase - 12; midi--) {
+      for (var midi = topBase + 14; midi >= topBase - 15; midi--) {
         var oct = Math.floor(midi / 12) - 1;
         var sem = ((midi % 12) + 12) % 12;
         allRows.push(noteNames[sem] + oct);
       }
-      var nRows = 24;
+      var nRows = 30;
 
-      // Size: any 12 consecutive semitones = 7 white + 5 black → same total height
+      // Size: any 15 consecutive semitones = 9 white + 6 black → same total height
       var unitH = h / (WHITES + BLACKS * BLACK_FACTOR);
       var rowLayout = [];
       var cumY = 0;
