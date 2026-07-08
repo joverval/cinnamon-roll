@@ -452,6 +452,7 @@
     let isPlaying = false;
     let activePreload = null;
     let engineReady = false;
+    let defaultCps = 0.5; // Strudel default (120 BPM / 2s per cycle), captured at init
 
     /* ── Sidebar toggle ── */
     function openSidebar() {
@@ -789,6 +790,10 @@
         engineReady = true;
         setStatus('Ready');
 
+        // Capture the initial cps so Stop can restore it after user setcps() calls
+        try { if (typeof cps === 'function') defaultCps = Number(cps()) || 0.5; } catch(e) {}
+        console.log('[repl] defaultCps captured as:', defaultCps);
+
         // Catch runtime errors from the pattern scheduler
         document.addEventListener('strudel.log', function(e) {
           if (e.detail && e.detail.type === 'error') {
@@ -850,8 +855,8 @@
     }
 
     function stop() {
-      // Stop resets the entire environment: mute, reset clock, clear patterns.
-      // Next play() will start from the beginning.
+      // Stop resets the entire environment: mute, reset clock, reset tempo,
+      // clear patterns. Next play() will start from the beginning.
       // The textarea content is preserved — user's code stays put.
       try { evaluate('hush()'); } catch(e) {}
       try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
@@ -861,6 +866,18 @@
         repl.reset();
       } else if (typeof resetClock !== 'undefined') {
         resetClock();
+      }
+      
+      // Reset tempo back to the default captured at init time.
+      // setcps() mutates the global scheduler, not the pattern — persists across plays.
+      try {
+        if (typeof setcps === 'function') {
+          setcps(defaultCps);
+        } else {
+          evaluate('setcps(' + defaultCps + ')');
+        }
+      } catch (e) {
+        console.warn('[stop] could not reset cps:', e);
       }
       
       isPlaying = false;
