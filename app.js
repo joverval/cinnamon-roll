@@ -606,8 +606,13 @@
     clearError();
     try {
       // .punchcard() and .pianoroll() are real Strudel visual functions.
-      // Detect them to trigger our custom piano roll alongside Strudel's own visuals.
+      // Rewrite ._ variants to their non-underscore equivalents so copy-pasted
+      // Strudel code works even if the loaded version only has the bare names.
       var shouldVisualize = /\._?(punchcard|pianoroll)\s*\(/.test(code);
+      var evalCode = code
+        .replace(/\._punchcard\s*\(/g, '.punchcard(')
+        .replace(/\._pianoroll\s*\(/g, '.pianoroll(');
+
       if (shouldVisualize) {
         punchcard.start();
       } else {
@@ -626,7 +631,7 @@
       // Bake cps reset into the evaluated code so setcps() and the pattern
       // run atomically — avoids the cyclist restarting between calls and
       // ticking forward before the pattern starts.
-      var fullCode = 'setcps(' + defaultCps + ');\n' + code;
+      var fullCode = 'setcps(' + defaultCps + ');\n' + evalCode;
       var evalPattern = await evaluate(fullCode);
 
       var pattern = null;
