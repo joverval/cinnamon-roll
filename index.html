@@ -1098,6 +1098,12 @@
       if (repl && typeof repl.stop === 'function') {
         repl.stop();
       }
+      // Clear the scheduler's startTime so the next evaluate() uses
+      // the current audio clock, not the old one. Without this, waiting
+      // in stopped mode and then playing starts mid-cycle.
+      if (repl && repl.scheduler) {
+        repl.scheduler.startTime = undefined;
+      }
       
       // Reset tempo back to the default (setcps mutates global scheduler state)
       try {
