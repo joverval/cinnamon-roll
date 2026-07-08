@@ -402,6 +402,7 @@
 
       <div class="controls">
         <button class="btn btn-play" id="btnPlay">▶ Play</button>
+        <button class="btn btn-pause" id="btnPause">⏸ Pause</button>
         <button class="btn btn-stop" id="btnStop">⏹ Stop</button>
         <span class="status-text" id="statusText"></span>
       </div>
@@ -419,6 +420,7 @@
     /* ── DOM refs ── */
     const editor    = document.getElementById('editor');
     const btnPlay   = document.getElementById('btnPlay');
+    const btnPause  = document.getElementById('btnPause');
     const btnStop   = document.getElementById('btnStop');
     const btnPreloads = document.getElementById('btnPreloads');
     const btnSidebarClose = document.getElementById('btnSidebarClose');
@@ -427,6 +429,9 @@
     const preloadList = document.getElementById('preloadList');
     const statusText = document.getElementById('statusText');
     const errorPanel = document.getElementById('errorPanel');
+  
+    let repl = null; // Store the Strudel repl instance
+  let isPaused = false; // Track pause state
     const punchcardCanvas = document.getElementById('punchcardCanvas');
     const punchcardCtx = punchcardCanvas.getContext('2d');
 
@@ -831,9 +836,10 @@
       setStatus('Loading samples...');
       try {
         // initStrudel is global from @strudel/web script
-        await initStrudel({
+        repl = await initStrudel({
           prebake: () => samples('samples/strudel.json'),
         });
+        console.log('[repl] initialized, methods:', Object.keys(repl || {}));
         engineReady = true;
         setStatus('Ready');
 
@@ -850,7 +856,7 @@
       }
     }
 
-    /* ── Play / Stop ── */
+    /* ── Play / Pause / Stop ── */
     /* Piano roll: evaluate() returns the Pattern; we queryArc() it directly to get hap events.
      * No code wrapping, no hooks, no CustomEvents needed. */
 
@@ -869,9 +875,10 @@
         // Evaluate the ORIGINAL code — no wrapping needed.
         // evaluate() returns the Pattern that strudel is now playing.
         var pattern = await evaluate(code);
-        console.log("[pn] evaluate returned pattern:", pattern ? 'yes' : 'no');
+        console.log('[pn] evaluate returned pattern:', pattern ? 'yes' : 'no');
 
         isPlaying = true;
+        isPaused = false;
         setStatus('Playing', 'playing');
 
         // Query the pattern for piano roll data
@@ -882,15 +889,41 @@
       }
     }
 
-    function stop() {
+    function pause() {
+      // Pause just mutes audio but keeps the scheduler running
+      // On next play(), it will continue from where it was
       try { evaluate('hush()'); } catch(e) {}
       try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
       isPlaying = false;
-      setStatus('Stopped');
+      isPaused = true;
+      setStatus('Paused');
       punchcard.stop();
     }
 
+    function stop() {
+      // Stop resets the entire environment: mute, reset clock, clear patterns
+      // Next play() will start from the beginning
+      try { evaluate('hush()'); } catch(e) {}
+      try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
+      
+      // Reset the clock to 0
+      if (repl && typeof repl.reset === 'function') {
+        repl.reset();
+      } else if (typeof resetClock !== 'undefined') {
+        resetClock();
+      }
+      
+      isPlaying = false;
+      isPaused = false;
+      setStatus('Stopped');
+      punchcard.stop();
+      
+      // Clear the editor to start fresh
+      editor.value = '';
+    }
+
     btnPlay.addEventListener('click', play);
+    btnPause.addEventListener('click', pause);
     btnStop.addEventListener('click', stop);
 
     // keyboard shortcuts
@@ -900,9 +933,9 @@
         e.preventDefault();
         play();
       }
-      // Escape to stop
+      // Escape to pause
       if (e.key === 'Escape' && document.activeElement !== editor) {
-        stop();
+        pause();
       }
     });
 
