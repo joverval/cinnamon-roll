@@ -764,20 +764,23 @@
           this._lastDrawLog = performance.now();
         }
         
-        var ph = this.getPlayhead();
+        // Get absolute time to calculate actual cycle number
+        var absoluteTime = getTime ? getTime() : 0;
+        if (absoluteTime && typeof absoluteTime.floor === 'function') {
+          // Fraction object - convert to number
+          absoluteTime = Number(absoluteTime);
+        }
+        var currentCycle = Math.floor(absoluteTime);
+        var ph = absoluteTime - currentCycle; // Position within current cycle (0 to 1)
         var PLAYHEAD_X = labelW + 4;
         
         // Auto-scroll to follow notes in visible window
         if (this.events && this.events.length > 0) {
           var self = this;
-          // Get current cycle (playhead is in cycle units)
-          var currentCycle = Math.floor(ph);
-          var windowEnd = ph + 0.5;
-          
-          // Find events in the current cycle or slightly ahead
+          // Find events in the current cycle and next cycle
           var visibleEvents = this.events.filter(function(ev) {
             var evCycle = Math.floor(ev.time);
-            return evCycle === currentCycle;
+            return evCycle === currentCycle || evCycle === currentCycle + 1;
           });
           
           if (visibleEvents.length > 0) {
@@ -884,23 +887,23 @@
         }
 
         // Note events - draw using absolute time positions
-        var currentCycle = Math.floor(ph);
+        // currentCycle is already calculated above
         for (var r = 0; r < nRows; r++) {
           var rowLabel = allRows[r];
           var y = r * rowH - this.scrollY;
           
           // Skip rows outside visible area
           if (y + rowH < 0 || y > visibleHeight) continue;
-
+          
           (this.events || []).forEach(function(ev) {
             if (ev.label !== rowLabel) return;
-            // Calculate relative position from current playhead cycle
-            var relTime = ev.time - currentCycle - (ph - currentCycle);
+            // Calculate relative position from current playhead position
+            var relTime = ev.time - absoluteTime;
             var pixelOffset = relTime * gridW;
             var ex = PLAYHEAD_X + pixelOffset;
             var ew = Math.max(3, gridW / 80);
             var eh = rowH - 2;
-
+            
             if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
 
             var dist = Math.abs(relTime);
