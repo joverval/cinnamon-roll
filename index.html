@@ -580,12 +580,12 @@
 
               try {
                 // Query 1 cycle to get the pattern structure
-                var haps = pattern.queryArc(0, 1);
+                var haps = pattern.queryArc(0, 8); // Query 8 cycles to capture evolution
 
                 this.events = [];
                 this.rows = [];
                 var self = this;
-                var seen = {};  // dedup: "time_0.XXX:label"
+                var seen = {};
 
                 haps.forEach(function(hap) {
                   if (!hap.hasOnset || !hap.hasOnset()) return;
@@ -593,26 +593,24 @@
                   var label = self.labelFromValue(hap.value);
                   if (!label) return;
 
-                  // Get cycle-relative position (0-1) in the first cycle
+                  // Get absolute time position (across cycles)
                   var fract = hap.part && hap.part.begin;
                   var time = 0;
                   try {
                     var f = fract;
                     if (f && typeof f.floor === 'function' && typeof f.sub === 'function') {
-                      var floored = f.floor();
-                      var withinCycle = f.sub(floored);
-                      time = Number(withinCycle);
+                      // Keep the absolute position, don't collapse to 0-1
+                      time = Number(f);
                     } else {
-                      time = Number(f) % 1;
+                      time = Number(f);
                     }
                   } catch (e) {
-                    time = Number(fract) % 1 || 0;
+                    time = Number(fract) || 0;
                   }
                   if (!isFinite(time)) time = 0;
-                  if (time < 0) time += 1;
-                  if (time >= 1) time -= 1;
+                  if (time < 0) time = 0;
 
-                  // Round time key to 3 decimals for stable dedup
+                  // Dedup by absolute time and label (not cycle-relative)
                   var timeKey = time.toFixed(3);
                   var dedupKey = timeKey + ':' + label;
                   if (seen[dedupKey]) return;
@@ -788,33 +786,32 @@
           ctx.stroke();
         }
 
-        // Note events
-        var CYCLES = 3;
+        // Note events - draw using absolute time positions
+        var currentCycle = Math.floor(ph);
         for (var r = 0; r < nRows; r++) {
           var rowLabel = allRows[r];
           var y = r * rowH;
 
-          for (var cycle = -1; cycle < CYCLES - 1; cycle++) {
-            (this.events || []).forEach(function(ev) {
-              if (ev.label !== rowLabel) return;
-              var relTime = ev.time - ph + cycle;
-              var pixelOffset = relTime * gridW;
-              var ex = PLAYHEAD_X + pixelOffset;
-              var ew = Math.max(3, gridW / 80);
-              var eh = rowH - 2;
+          (this.events || []).forEach(function(ev) {
+            if (ev.label !== rowLabel) return;
+            // Calculate relative position from current playhead cycle
+            var relTime = ev.time - currentCycle - (ph - currentCycle);
+            var pixelOffset = relTime * gridW;
+            var ex = PLAYHEAD_X + pixelOffset;
+            var ew = Math.max(3, gridW / 80);
+            var eh = rowH - 2;
 
-              if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
+            if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
 
-              var dist = Math.abs(relTime);
-              var alpha = Math.max(0.08, 0.75 - dist * 0.5);
-              if (dist > 1.5) alpha = 0.05;
+            var dist = Math.abs(relTime);
+            var alpha = Math.max(0.08, 0.75 - dist * 0.5);
+            if (dist > 3) alpha = 0.05;
 
-              ctx.fillStyle = 'rgba(255,140,140,' + alpha.toFixed(2) + ')';
-              ctx.beginPath();
-              ctx.roundRect(ex, y + 1, ew, eh, 2);
-              ctx.fill();
-            });
-          }
+            ctx.fillStyle = 'rgba(255,140,140,' + alpha.toFixed(2) + ')';
+            ctx.beginPath();
+            ctx.roundRect(ex, y + 1, ew, eh, 2);
+            ctx.fill();
+          });
         }
 
         ctx.restore();
