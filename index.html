@@ -1058,7 +1058,7 @@
       }
       return 'cycle=' + cycle + ' phase=' + (typeof phase === 'number' ? phase.toFixed(3) : phase) +
         ' startTime=' + (s.startTime ? Number(s.startTime).toFixed(1) : s.startTime) +
-        ' cps=' + (typeof cps === 'function' ? cps().toFixed(2) : '?');
+        ' cps=' + (typeof cps === 'function' ? Number(cps()).toFixed(2) : '?');
     }
 
     async function play() {
