@@ -562,7 +562,15 @@
                   if (!hap.hasOnset || !hap.hasOnset()) return;
 
                   var label = self.labelFromValue(hap.value);
-                  console.log("[pn] hap label:", label, "value:", hap.value);
+                  console.log("[pn] hap:", {
+                    label: label,
+                    value: hap.value,
+                    valueKeys: hap.value && typeof hap.value === 'object' ? Object.keys(hap.value) : typeof hap.value,
+                    valueJson: JSON.stringify(hap.value),
+                    time_begin: hap.part && hap.part.begin ? String(hap.part.begin) : null,
+                    time_end: hap.part && hap.part.end ? String(hap.part.end) : null,
+                    duration: hap.duration ? String(hap.duration) : null,
+                  });
                   if (!label) return;
 
                   // Get cycle-relative position (0-1)
