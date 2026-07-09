@@ -505,7 +505,9 @@
         (this.events || []).forEach(function(ev) {
           if (ev.label !== rl.label) return;
           // Calculate relative position from current playhead position
-          var relTime = ev.time - absoluteTime;
+          // Wrap to nearest cycle so events always appear within ±0.5 cycles of playhead
+          var rawRelTime = ev.time - absoluteTime;
+          var relTime = rawRelTime - Math.round(rawRelTime);
           var pixelOffset = relTime * gridW;
           var ex = PLAYHEAD_X + pixelOffset;
           var ew = Math.max(3, gridW / 80);
@@ -808,5 +810,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc1 -- ._punchcard/.pianoroll rewrite + opt-in piano roll');
+  console.log('[build] 189-pc2 -- pianoroll cycle wrapping fix');
 })();
