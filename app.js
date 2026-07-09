@@ -494,7 +494,7 @@
         ctx.stroke();
       }
 
-      // Note events - draw using absolute time positions
+      // Note events — wrap each event to the visible cycle nearest the playhead
       for (var r = 0; r < nRows; r++) {
         var rl = rowLayout[r];
         var y = rl.y - this.scrollY;
@@ -502,18 +502,28 @@
         // Skip rows outside visible area
         if (y + rl.h < 0 || y > visibleHeight) continue;
 
+        // Dedup map per frame: one dot per (position×4, label) regardless of
+        // how many captured-cycle instances map to the same wrapped position.
+        var drawn = {};
+
         (this.events || []).forEach(function(ev) {
           if (ev.label !== rl.label) return;
-          // Calculate relative position from current playhead position
-          // Wrap to nearest cycle so events always appear within ±0.5 cycles of playhead
-          var rawRelTime = ev.time - absoluteTime;
-          var relTime = rawRelTime - Math.round(rawRelTime);
+          // Shift event to the cycle nearest the current playhead.
+          // e.g. ev.time=0.211 at getTime=10.219 → adjusted=10.211 → rel=-0.008
+          var nearestCycle = Math.round(absoluteTime - ev.time);
+          var relTime = ev.time + nearestCycle - absoluteTime;
           var pixelOffset = relTime * gridW;
           var ex = PLAYHEAD_X + pixelOffset;
           var ew = Math.max(3, gridW / 80);
           var eh = rl.h - 2;
 
           if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
+
+          // Deduplicate: one visible instance per (position bucket, label)
+          var bucket = Math.round(relTime * 100).toString();
+          var dedupKey = bucket + ':' + ev.label;
+          if (drawn[dedupKey]) return;
+          drawn[dedupKey] = true;
 
           var dist = Math.abs(relTime);
           var alpha = Math.max(0.08, 0.75 - dist * 0.5);
@@ -810,5 +820,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc2 -- pianoroll cycle wrapping fix');
+  console.log('[build] 189-pc3 -- pianoroll cycle wrap + dedup');
 })();
