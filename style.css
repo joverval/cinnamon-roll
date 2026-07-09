@@ -171,6 +171,45 @@ body {
 }
 .sounds-item:hover { background: var(--surface-hover); }
 
+.sounds-bank-header {
+  width: 100%;
+}
+
+.sounds-arrow {
+  font-size: 10px;
+  color: var(--text-soft);
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  transition: transform 180ms ease;
+}
+.sounds-arrow-hidden { visibility: hidden; }
+.sounds-bank.open .sounds-arrow { transform: rotate(90deg); }
+
+.sounds-sublist {
+  display: none;
+  padding: 2px 0 2px 24px;
+  border-left: 1px solid var(--border);
+  margin-left: 7px;
+}
+.sounds-bank.open .sounds-sublist { display: block; }
+
+.sounds-subitem {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 4px;
+  transition: background 120ms, color 120ms;
+}
+.sounds-subitem:hover { background: var(--surface-hover); color: var(--text); }
+
 .sounds-item-icon {
   font-size: 15px;
   flex-shrink: 0;

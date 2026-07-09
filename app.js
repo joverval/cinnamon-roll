@@ -825,13 +825,15 @@
     return previewAudioCtx;
   }
 
-  async function playSoundPreview(bank) {
+  async function playSoundPreview(urlOrBank) {
     try {
-      if (!soundBanks.length) return;
-      var entry = soundBanks.find(function(b) { return b.name === bank; });
-      if (!entry || !entry.samples.length) return;
-      // Use first sample in bank
-      var url = entry.samples[0];
+      // If passed a bank name, look up first sample
+      var url = urlOrBank;
+      if (soundBanks.length && urlOrBank.indexOf('/') === -1) {
+        var entry = soundBanks.find(function(b) { return b.name === urlOrBank; });
+        if (!entry || !entry.samples.length) return;
+        url = entry.samples[0];
+      }
       var ctx = getPreviewCtx();
       var resp = await fetch(url);
       if (!resp.ok) return;
@@ -872,16 +874,49 @@
   function renderSounds(banks) {
     soundsList.innerHTML = '';
     banks.forEach(function(bank) {
-      var btn = document.createElement('button');
-      btn.className = 'sounds-item';
-      btn.innerHTML =
-        '<span class="sounds-item-icon">🔊</span>' +
+      var wrapper = document.createElement('div');
+      wrapper.className = 'sounds-bank';
+
+      // Header row
+      var header = document.createElement('button');
+      header.className = 'sounds-item sounds-bank-header';
+      var hasSub = bank.count > 1;
+      header.innerHTML =
+        (hasSub ? '<span class="sounds-arrow">▸</span>' : '<span class="sounds-arrow sounds-arrow-hidden"></span>') +
         '<span class="sounds-item-name">' + escapeHtml(bank.name) + '</span>' +
         '<span class="sounds-item-count">' + bank.count + '</span>';
-      btn.addEventListener('click', function() {
-        playSoundPreview(bank.name);
+
+      // Click: toggle accordion if multi-sample, otherwise just preview
+      header.addEventListener('click', function(e) {
+        if (hasSub) {
+          wrapper.classList.toggle('open');
+        } else {
+          playSoundPreview(bank.samples[0]);
+        }
       });
-      soundsList.appendChild(btn);
+
+      wrapper.appendChild(header);
+
+      // Sub-items for multi-sample banks
+      if (hasSub) {
+        var sublist = document.createElement('div');
+        sublist.className = 'sounds-sublist';
+        bank.samples.forEach(function(url, idx) {
+          var sub = document.createElement('button');
+          sub.className = 'sounds-subitem';
+          // Extract filename from URL
+          var filename = url.split('/').pop().replace(/\.wav$/i, '');
+          sub.textContent = (idx + 1) + '. ' + filename;
+          sub.addEventListener('click', function(e) {
+            e.stopPropagation();
+            playSoundPreview(url);
+          });
+          sublist.appendChild(sub);
+        });
+        wrapper.appendChild(sublist);
+      }
+
+      soundsList.appendChild(wrapper);
     });
   }
 
@@ -928,5 +963,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc9 -- sounds panel (right side, collapsible, click-to-preview)');
+  console.log('[build] 189-pc10 -- sounds panel accordion for multi-sample banks');
 })();
