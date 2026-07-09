@@ -925,25 +925,14 @@
     captureNode.channelCount = 2;
 
     // Insert capture into the output path
-    // If we found the output gain node, redirect it
-    var rerouted = false;
+    // If we found the output gain node, add capture as a parallel sink
+    // (MediaStreamAudioDestinationNode has 0 outputs, so don't route through it)
     if (outputGainNode) {
       try {
-        outputGainNode.disconnect(ctx.destination);
         outputGainNode.connect(captureNode);
-        captureNode.connect(ctx.destination);
-        rerouted = true;
       } catch(e) {
-        console.warn('[export] Could not reroute audio graph:', e);
+        console.warn('[export] Could not attach capture node:', e);
       }
-    }
-
-    if (!rerouted) {
-      // Fallback: try to connect captureNode to destination as a parallel sink
-      // and hope the audio routing captures everything
-      try {
-        captureNode.connect(ctx.destination);
-      } catch(e) {}
     }
 
     // Set up MediaRecorder
@@ -1012,7 +1001,6 @@
     if (outputGainNode && captureNode) {
       try {
         outputGainNode.disconnect(captureNode);
-        outputGainNode.connect(ctx.destination);
       } catch(e) {}
     }
     if (captureNode) {
