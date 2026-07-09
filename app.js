@@ -508,10 +508,11 @@
 
         (this.events || []).forEach(function(ev) {
           if (ev.label !== rl.label) return;
-          // Shift event to the cycle nearest the current playhead.
-          // e.g. ev.time=0.211 at getTime=10.219 → adjusted=10.211 → rel=-0.008
-          var nearestCycle = Math.round(absoluteTime - ev.time);
-          var relTime = ev.time + nearestCycle - absoluteTime;
+          // Shift event forward to the next cycle instance ≥ playhead.
+          // Math.ceil ensures relTime ∈ [0, 1) so nothing is clipped left.
+          // e.g. ev.time=0.211 at getTime=2.228 → ceil(2.017)=3 → rel=0.983
+          var forwardCycle = Math.ceil(absoluteTime - ev.time);
+          var relTime = ev.time + forwardCycle - absoluteTime;
           var pixelOffset = relTime * gridW;
           var ex = PLAYHEAD_X + pixelOffset;
           var ew = Math.max(3, gridW / 80);
@@ -820,5 +821,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc3 -- pianoroll cycle wrap + dedup');
+  console.log('[build] 189-pc4 -- pianoroll ceil-wrap forward, never behind playhead');
 })();
