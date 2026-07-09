@@ -111,7 +111,11 @@
           <input class="export-input" type="text" id="exportDuration" value="1:00" placeholder="1:00" autocomplete="off" />
           <span class="export-hint">mm:ss or seconds</span>
         </div>
-        <p class="export-info">Exports from cycle 0 at 128 kbps MP3</p>
+        <p class="export-label">Format</p>
+        <div class="export-format-row">
+          <label class="export-radio"><input type="radio" name="exportFormat" value="mp3" checked /> MP3 (128 kbps)</label>
+          <label class="export-radio"><input type="radio" name="exportFormat" value="wav" /> WAV (lossless)</label>
+        </div>
       </div>
       <div class="export-progress" id="exportProgress" style="display:none">
         <span id="exportTimer">0:00</span>
@@ -125,7 +129,7 @@
   </div>
 
   <!-- Strudel engine -->
-  <script src="https://unpkg.com/@strudel/web@1.2.6"></script>
+  <script src="https://unpkg.com/@strudel/web@1.3.0"></script>
 
   <!-- App -->
   <script src="app.js"></script>

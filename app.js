@@ -753,37 +753,8 @@
 
   /* ── Export ── */
   var lamejsLoaded = false;
-  var captureNode = null;
-  var outputGainNode = null;
-  var origConnect = null;
-
-  // Monkey-patch: capture the final GainNode that connects to AudioContext.destination
-  if (typeof AudioNode !== 'undefined') {
-    origConnect = AudioNode.prototype.connect;
-    AudioNode.prototype.connect = function(dest) {
-      if (dest && dest.maxChannelCount !== undefined && dest.maxChannelCount > 0
-          && dest.channelCount !== undefined && this instanceof GainNode) {
-        // dest is an AudioDestinationNode, and this is a GainNode
-        outputGainNode = this;
-      }
-      var args = [].slice.call(arguments);
-      // If the first arg is an AudioParam (number of outputs differs), handle that
-      if (dest instanceof AudioParam) {
-        return origConnect.apply(this, args);
-      }
-      return origConnect.apply(this, args);
-    };
-  }
-
-  function getAudioCtx() {
-    try {
-      if (typeof getAudioContext === 'function') return getAudioContext();
-      if (repl && repl.scheduler && repl.scheduler.clock && repl.scheduler.clock._audioContext) {
-        return repl.scheduler.clock._audioContext;
-      }
-    } catch(e) {}
-    return null;
-  }
+  var exportTimerId = null;
+  var exportCancelled = false;
 
   function loadLamejs(cb) {
     if (lamejsLoaded) { cb(); return; }
@@ -796,10 +767,8 @@
 
   function parseDuration(val) {
     val = (val || '').trim();
-    // mm:ss
     var mmss = val.match(/^(\d+):(\d{1,2})$/);
     if (mmss) return parseInt(mmss[1]) * 60 + parseInt(mmss[2]);
-    // plain seconds
     var secs = parseFloat(val);
     if (isFinite(secs) && secs > 0) return secs;
     return null;
@@ -811,12 +780,18 @@
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
 
+  function getExportFormat() {
+    var el = document.querySelector('input[name="exportFormat"]:checked');
+    return el ? el.value : 'mp3';
+  }
+
   function openExportModal() {
     exportDuration.value = '1:00';
     exportSettings.style.display = '';
     exportProgress.style.display = 'none';
     btnExportProceed.style.display = '';
     btnExportProceed.disabled = false;
+    document.querySelector('input[name="exportFormat"][value="mp3"]').checked = true;
     exportOverlay.classList.add('open');
     exportDuration.focus();
     exportDuration.select();
@@ -849,7 +824,6 @@
     }
   });
 
-  // Enable Export button as user types
   editor.addEventListener('input', function() {
     clearButtonStates();
   });
@@ -858,23 +832,11 @@
     if (e.key === 'Enter') startExport();
   });
 
-  var exportTimerId = null;
-  var mediaRecorder = null;
-  var recordedChunks = [];
-  var exportCancelled = false;
-
   btnExportProceed.addEventListener('click', startExport);
 
   function cancelExport() {
     exportCancelled = true;
     if (exportTimerId) { clearInterval(exportTimerId); exportTimerId = null; }
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop();
-    }
-    recordedChunks = [];
-    stop();
-    var ctx = getAudioCtx();
-    restoreOutputRouting(ctx);
     btnExport.classList.remove('recording');
     btnExport.textContent = '⏺ Export';
     setStoppedState();
@@ -896,160 +858,176 @@
     var code = editor.value.trim();
     if (!code) return;
 
-    loadLamejs(function() {
-      doExport(code, duration);
-    });
+    var format = getExportFormat();
+    if (format === 'mp3') {
+      loadLamejs(function() { doExport(code, duration, format); });
+    } else {
+      doExport(code, duration, format);
+    }
   }
 
-  function doExport(code, duration) {
+  async function doExport(code, duration, format) {
     exportCancelled = false;
+
     // Switch to progress view
     exportSettings.style.display = 'none';
     exportProgress.style.display = 'block';
     btnExportProceed.style.display = 'none';
-    exportTimer.textContent = formatTime(duration);
-
-    // Stop, reset cycle to 0
-    stop();
-
-    var ctx = getAudioCtx();
-    if (!ctx) {
-      showError('Could not access audio context');
-      closeExportModal();
-      return;
-    }
-
-    // Create capture node
-    if (captureNode) { captureNode.disconnect(); }
-    captureNode = ctx.createMediaStreamDestination();
-    captureNode.channelCount = 2;
-
-    // Insert capture into the output path
-    // If we found the output gain node, add capture as a parallel sink
-    // (MediaStreamAudioDestinationNode has 0 outputs, so don't route through it)
-    if (outputGainNode) {
-      try {
-        outputGainNode.connect(captureNode);
-      } catch(e) {
-        console.warn('[export] Could not attach capture node:', e);
-      }
-    }
-
-    // Set up MediaRecorder
-    recordedChunks = [];
-    var mimeType = 'audio/webm;codecs=opus';
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-      mimeType = 'audio/webm';
-    }
-    try {
-      mediaRecorder = new MediaRecorder(captureNode.stream, { mimeType: mimeType });
-    } catch(e) {
-      showError('Recording not supported in this browser');
-      restoreOutputRouting(ctx);
-      closeExportModal();
-      return;
-    }
-
-    mediaRecorder.ondataavailable = function(e) {
-      if (e.data.size > 0) recordedChunks.push(e.data);
-    };
-
-    mediaRecorder.onstop = function() {
-      processRecording(duration);
-    };
-
-    mediaRecorder.start();
+    exportTimer.textContent = 'Rendering...';
+    exportBarFill.style.width = '0%';
 
     // Show recording state
     btnExport.classList.add('recording');
-    btnExport.textContent = '⏺ Recording...';
+    btnExport.textContent = '⏺ Exporting...';
     btnPlay.disabled = true;
     btnPause.disabled = true;
     btnStop.disabled = true;
-    var startTime = Date.now();
 
+    var startTime = Date.now();
     exportTimerId = setInterval(function() {
       var elapsed = (Date.now() - startTime) / 1000;
-      var remaining = Math.max(0, duration - elapsed);
-      exportTimer.textContent = formatTime(remaining);
-      exportBarFill.style.width = (elapsed / duration * 100) + '%';
-
-      if (elapsed >= duration) {
-        clearInterval(exportTimerId);
-        exportTimerId = null;
-        mediaRecorder.stop();
-        stop();
-      }
+      exportTimer.textContent = formatTime(elapsed);
     }, 200);
 
-    // Start playback from cycle 0
-    play().then(function() {
-      // play() calls setPlayingState() which resets buttons.
-      // Re-apply recording state on top.
-      if (exportTimerId) {
-        btnPlay.classList.remove('playing');
-        btnPlay.disabled = true;
-        btnPause.disabled = true;
-        btnStop.disabled = true;
-        btnExport.classList.add('recording');
-        btnExport.disabled = false;
+    try {
+      // Stop playback first (resets cycle)
+      stop();
+
+      // Calculate cycles: duration * cps, ceiling so we don't cut short
+      var cpsVal = defaultCps;
+      try { if (typeof cps === 'function') cpsVal = Number(cps()) || defaultCps; } catch(e) {}
+      var cycles = Math.ceil(duration * cpsVal);
+      var sampleRate = 44100;
+      var maxPolyphony = typeof DEFAULT_MAX_POLYPHONY !== 'undefined' ? DEFAULT_MAX_POLYPHONY : 128;
+
+      // Evaluate code to get the pattern (renderPatternAudio needs a compiled Pattern)
+      var fullCode = 'setcps(' + cpsVal + ');\n' + code;
+      await evaluate(fullCode);
+      var pattern = repl.pattern;
+      if (!pattern || typeof pattern.queryArc !== 'function') {
+        throw new Error('Could not compile pattern. Check your code for errors.');
       }
-    });
-  }
 
-  function restoreOutputRouting(ctx) {
-    if (outputGainNode && captureNode) {
-      try {
-        outputGainNode.disconnect(captureNode);
-      } catch(e) {}
-    }
-    if (captureNode) {
-      try { captureNode.disconnect(); } catch(e) {}
-      captureNode = null;
-    }
-  }
+      // renderPatternAudio takes: pattern, cps, startCycle, endCycle, sampleRate, maxPolyphony, multiChannel, filename
+      // It closes the live AudioContext, creates an OfflineAudioContext, renders, and downloads WAV.
+      // After it completes, we need to reinitialize live audio.
 
-  function processRecording(duration) {
-    var ctx = getAudioCtx();
-    restoreOutputRouting(ctx);
+      if (format === 'wav') {
+        // WAV: use renderPatternAudio directly (it auto-downloads)
+        if (typeof renderPatternAudio !== 'function') {
+          throw new Error('renderPatternAudio not available. Please reload the page.');
+        }
+        await renderPatternAudio(pattern, cpsVal, 0, cycles, sampleRate, maxPolyphony, false, 'cinnamon-roll-export');
+      } else {
+        // MP3: renderPatternAudio outputs WAV. We intercept the download, decode, and re-encode to MP3.
+        await exportMp3(pattern, cpsVal, cycles, sampleRate, maxPolyphony);
+      }
 
-    if (exportCancelled) {
-      exportCancelled = false;
-      return;
+      if (exportCancelled) return;
+
+      // renderPatternAudio destroys the live AudioContext.
+      // Reinitialize so the user can keep playing.
+      await reinitEngine();
+
+    } catch(e) {
+      showError('Export failed: ' + (e.message || String(e)));
+      console.error(e);
+      await reinitEngine();
     }
 
     // Reset UI
+    clearInterval(exportTimerId);
+    exportTimerId = null;
     btnExport.classList.remove('recording');
     btnExport.textContent = '⏺ Export';
     setStoppedState();
     closeExportModal();
+  }
 
-    if (recordedChunks.length === 0) {
-      showError('No audio recorded');
-      return;
+  /**
+   * MP3 export: we let renderPatternAudio do the rendering, but intercept
+   * the WAV download by temporarily overriding URL.createObjectURL and
+   * document.createElement('a') to capture the rendered AudioBuffer.
+   *
+   * Alternative approach: replicate renderPatternAudio logic manually using
+   * OfflineAudioContext + setAudioContext + superdough, then encode to MP3.
+   */
+  async function exportMp3(pattern, cpsVal, cycles, sampleRate, maxPolyphony) {
+    // Save original AudioContext before renderPatternAudio closes it
+    // We need access to the AudioBuffer before it gets encoded to WAV.
+    // Strategy: intercept the download by temporarily swapping URL.createObjectURL
+    // to capture the blob, then decode and re-encode.
+    var capturedBlob = null;
+
+    var origCreateObjectURL = URL.createObjectURL;
+    URL.createObjectURL = function(blob) {
+      capturedBlob = blob;
+      return origCreateObjectURL.call(URL, blob);
+    };
+
+    // Also prevent the auto-download by intercepting click on <a>
+    var origCreateElement = document.createElement.bind(document);
+    var interceptedAnchor = null;
+    document.createElement = function(tag) {
+      var el = origCreateElement(tag);
+      if (tag.toLowerCase() === 'a') {
+        interceptedAnchor = el;
+        var origClick = el.click.bind(el);
+        el.click = function() {
+          // Don't auto-click; we'll handle the download ourselves
+        };
+      }
+      return el;
+    };
+
+    try {
+      if (typeof renderPatternAudio !== 'function') {
+        throw new Error('renderPatternAudio not available. Please reload the page.');
+      }
+      await renderPatternAudio(pattern, cpsVal, 0, cycles, sampleRate, maxPolyphony, false, 'cinnamon-roll-export');
+    } finally {
+      // Restore originals
+      URL.createObjectURL = origCreateObjectURL;
+      document.createElement = origCreateElement;
     }
 
-    var blob = new Blob(recordedChunks, { type: 'audio/webm' });
-    recordedChunks = [];
+    if (exportCancelled) return;
 
-    // Decode → encode MP3
-    var reader = new FileReader();
-    reader.onload = function() {
-      var arrayBuffer = reader.result;
-      if (!ctx) { showError('Audio context unavailable'); return; }
-      ctx.decodeAudioData(arrayBuffer, function(audioBuffer) {
-        try {
-          var mp3Blob = encodeMp3(audioBuffer);
-          triggerDownload(mp3Blob);
-        } catch(e) {
-          showError('MP3 encoding failed: ' + e.message);
-          console.error(e);
-        }
-      }, function() {
-        showError('Could not decode recorded audio');
+    if (!capturedBlob) {
+      throw new Error('Could not capture rendered audio');
+    }
+
+    // Decode WAV blob to AudioBuffer
+    var arrayBuffer = await capturedBlob.arrayBuffer();
+    var ctx = new AudioContext();
+    var audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    await ctx.close();
+
+    // Encode to MP3
+    var mp3Blob = encodeMp3(audioBuffer);
+    triggerDownload(mp3Blob, 'cinnamon-roll-export.mp3');
+  }
+
+  async function reinitEngine() {
+    // renderPatternAudio closes the live AudioContext.
+    // Reinitialize from scratch so the user can keep playing.
+    try {
+      // Create a fresh AudioContext and reinitialize Strudel
+      if (typeof initAudio === 'function') {
+        await initAudio({});
+      }
+      // Reload samples
+      repl = await initStrudel({
+        prebake: function() { return samples('samples/strudel.json'); },
       });
-    };
-    reader.readAsArrayBuffer(blob);
+      engineReady = true;
+      clearButtonStates();
+      console.log('[export] Engine reinitialized after render');
+    } catch(e) {
+      engineReady = false;
+      showError('Could not restart audio. Please reload the page.');
+      console.error('[export] Reinit failed:', e);
+    }
   }
 
   function encodeMp3(audioBuffer) {
@@ -1066,7 +1044,6 @@
       var leftChunk = left.subarray(i, i + sampleBlockSize);
       var rightChunk = right.subarray(i, i + sampleBlockSize);
 
-      // Convert Float32 [-1,1] to Int16
       var left16 = new Int16Array(leftChunk.length);
       var right16 = new Int16Array(rightChunk.length);
       for (var j = 0; j < leftChunk.length; j++) {
@@ -1084,11 +1061,11 @@
     return new Blob(mp3Data, { type: 'audio/mpeg' });
   }
 
-  function triggerDownload(blob) {
+  function triggerDownload(blob, filename) {
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'cinnamon-roll-export.mp3';
+    a.download = filename || 'cinnamon-roll-export.mp3';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1342,5 +1319,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 190-export -- export to MP3 at 128kbps, button states replace statusText');
+  console.log('[build] 191-offline-export -- renderPatternAudio v1.3.0, WAV/MP3, ceiling cycles');
 })();
