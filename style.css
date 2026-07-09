@@ -246,8 +246,6 @@ body {
 .btn-sounds.active { background: var(--accent-glow); color: var(--accent-text); border-color: var(--accent); }
 
 /* ── Mobile menu ── */
-.btn-menu { display: none; }
-
 .menu-dropdown {
   display: none;
   position: absolute;
@@ -281,9 +279,6 @@ body {
 
 /* Mobile: sounds panel as overlay */
 @media (max-width: 768px) {
-  .btn-preloads, .btn-sounds { display: none; }
-  .btn-menu { display: inline-flex; background: var(--surface); color: var(--text-muted); border: 1px solid var(--border); padding: 10px 14px; font-size: 18px; }
-  .btn-menu:hover { background: var(--surface-hover); }
   .sounds-panel {
     position: fixed;
     top: 0;
@@ -502,6 +497,16 @@ body {
 }
 .btn-preloads:hover { background: var(--surface-hover); }
 
+.btn-menu {
+  display: none;
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  font-size: 18px;
+}
+.btn-menu:hover { background: var(--surface-hover); }
+
 .status-text {
   font-size: 13px;
   color: var(--text-muted);
@@ -554,6 +559,8 @@ body {
   .sidebar-overlay.open { display: block; }
   .sidebar-close { display: block; }
   .topbar .attribution { display: none; }
+  .btn-preloads, .btn-sounds { display: none !important; }
+  .btn-menu { display: inline-flex !important; }
   #editor { font-size: 14px; padding: 14px 16px; }
 }
 
