@@ -249,8 +249,8 @@ body {
 /* ── Mobile menu ── */
 .menu-dropdown {
   display: none;
-  position: absolute;
-  top: 100%;
+  position: fixed;
+  top: 52px;
   right: 8px;
   background: var(--surface);
   border: 1px solid var(--border);

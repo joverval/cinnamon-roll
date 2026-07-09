@@ -33,7 +33,7 @@
       <button class="btn btn-sounds" id="btnSounds" aria-label="Toggle sounds">
         🔊 Sounds
       </button>
-      <button class="btn btn-menu" id="btnMenu" aria-label="Menu" onclick="document.getElementById('menuDropdown').classList.toggle('open')">
+      <button class="btn btn-menu" id="btnMenu" aria-label="Menu" onclick="console.log('menu clicked');var d=document.getElementById('menuDropdown');d.classList.toggle('open');console.log('open?',d.classList.contains('open'))">
         ☰
       </button>
     </div>

@@ -969,5 +969,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc14 -- inline onclick for hamburger menu');
+  console.log('[build] 189-pc15 -- debug menu onclick -- inline onclick for hamburger menu');
 })();
