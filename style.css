@@ -43,6 +43,7 @@ body {
   background: var(--surface);
   flex-shrink: 0;
   z-index: 10;
+  position: relative;
 }
 
 .topbar-left {
