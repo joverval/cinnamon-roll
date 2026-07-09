@@ -906,9 +906,26 @@
         .replace(/\._punchcard\s*\(/g, '.punchcard(')
         .replace(/\._pianoroll\s*\(/g, '.pianoroll(');
       var fullCode = 'setcps(' + cpsVal + ');\n' + evalCode;
-      await evaluate(fullCode);
-      var pattern = repl.pattern;
+      var evalPattern = await evaluate(fullCode);
+
+      // Same pattern resolution as play()
+      var pattern = null;
+      if (repl && repl.pattern) {
+        pattern = repl.pattern;
+      } else if (repl && typeof repl.getPattern === 'function') {
+        pattern = repl.getPattern();
+      } else if (typeof getPattern === 'function') {
+        pattern = getPattern();
+      } else if (evalPattern && typeof evalPattern.queryArc === 'function') {
+        pattern = evalPattern;
+      }
+
       if (!pattern || typeof pattern.queryArc !== 'function') {
+        // Clean up the scheduler that evaluate() started
+        try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
+        if (repl && repl.scheduler && typeof repl.scheduler.stop === 'function') {
+          repl.scheduler.stop();
+        }
         throw new Error('Could not compile pattern. Check your code for errors.');
       }
 
@@ -934,6 +951,11 @@
       await reinitEngine();
 
     } catch(e) {
+      // Clean up scheduler that evaluate() may have started
+      try { if (typeof hush !== 'undefined') hush(); } catch(e2) {}
+      if (repl && repl.scheduler && typeof repl.scheduler.stop === 'function') {
+        repl.scheduler.stop();
+      }
       showError('Export failed: ' + (e.message || String(e)));
       console.error(e);
       await reinitEngine();
