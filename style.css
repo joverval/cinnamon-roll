@@ -605,6 +605,13 @@ body {
   color: var(--text-soft);
 }
 
+.export-estimate {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  min-height: 16px;
+}
+
 .export-format-row {
   display: flex;
   flex-direction: column;

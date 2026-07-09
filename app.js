@@ -25,6 +25,7 @@
   const exportOverlay = document.getElementById('exportOverlay');
   const exportSettings = document.getElementById('exportSettings');
   const exportDuration = document.getElementById('exportDuration');
+  const exportEstimate = document.getElementById('exportEstimate');
   const exportProgress = document.getElementById('exportProgress');
   const exportTimer = document.getElementById('exportTimer');
   const exportBarFill = document.getElementById('exportBarFill');
@@ -785,6 +786,27 @@
     return el ? el.value : 'mp3';
   }
 
+  function updateExportEstimate() {
+    var duration = parseDuration(exportDuration.value);
+    if (!duration || duration < 0.5) {
+      exportEstimate.textContent = '';
+      return;
+    }
+    var cpsVal = defaultCps;
+    try {
+      var rawCps = cps();
+      if (rawCps && typeof rawCps.n === 'number' && typeof rawCps.d === 'number') {
+        cpsVal = (rawCps.n / rawCps.d) * (rawCps.s || 1);
+      } else {
+        var n = Number(rawCps);
+        if (isFinite(n) && n > 0) cpsVal = n;
+      }
+    } catch(e) {}
+    var cycles = Math.ceil(duration * cpsVal);
+    var actualDuration = cycles / cpsVal;
+    exportEstimate.textContent = '≈ ' + formatTime(actualDuration) + ' (' + cycles + ' cycles at ' + cpsVal.toFixed(1) + ' cps)';
+  }
+
   function openExportModal() {
     exportDuration.value = '1:00';
     exportSettings.style.display = '';
@@ -793,6 +815,7 @@
     btnExportProceed.disabled = false;
     document.querySelector('input[name="exportFormat"][value="mp3"]').checked = true;
     exportOverlay.classList.add('open');
+    updateExportEstimate();
     exportDuration.focus();
     exportDuration.select();
   }
@@ -831,6 +854,8 @@
   exportDuration.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') startExport();
   });
+
+  exportDuration.addEventListener('input', updateExportEstimate);
 
   btnExportProceed.addEventListener('click', startExport);
 
