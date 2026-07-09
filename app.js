@@ -894,8 +894,17 @@
       stop();
 
       // Calculate cycles: duration * cps, ceiling so we don't cut short
+      // cps() returns a Fraction — convert via n/d (Number() is unreliable on Fractions)
       var cpsVal = defaultCps;
-      try { if (typeof cps === 'function') cpsVal = Number(cps()) || defaultCps; } catch(e) {}
+      try {
+        var rawCps = cps();
+        if (rawCps && typeof rawCps.n === 'number' && typeof rawCps.d === 'number') {
+          cpsVal = (rawCps.n / rawCps.d) * (rawCps.s || 1);
+        } else {
+          var n = Number(rawCps);
+          if (isFinite(n) && n > 0) cpsVal = n;
+        }
+      } catch(e) {}
       var cycles = Math.ceil(duration * cpsVal);
       var sampleRate = 44100;
       var maxPolyphony = typeof DEFAULT_MAX_POLYPHONY !== 'undefined' ? DEFAULT_MAX_POLYPHONY : 128;
