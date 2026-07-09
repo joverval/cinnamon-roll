@@ -171,8 +171,13 @@
             if (!pattern || typeof pattern.queryArc !== 'function') return;
 
             try {
-              // Query 128 cycles to capture pattern evolution (e.g., .add() across many cycles)
-              var haps = pattern.queryArc(0, 128);
+              // Query 128 cycles starting from current playhead position
+              // so events are always near the playhead regardless of when
+              // the pattern was started (fixes desktop-vs-mobile timing gap).
+              var startCycle = 0;
+              try { startCycle = Math.floor(getTime ? Number(getTime()) : 0); } catch(e) {}
+              if (!isFinite(startCycle) || startCycle < 0) startCycle = 0;
+              var haps = pattern.queryArc(startCycle, startCycle + 128);
               this.capturedCycles = 128;
 
               this.events = [];
@@ -344,8 +349,7 @@
       var ph = absoluteTime - currentCycle;
       var labelW = 60;
       var gridW = w - labelW - 8;
-      var PLAYHEAD_FRAC = 0.25;   // playhead at 25% from left → 0.25 behind, 0.75 ahead
-      var PLAYHEAD_X = labelW + 4 + gridW * PLAYHEAD_FRAC;
+      var PLAYHEAD_X = labelW + 4;
 
       // Find the best 15-note window from events near the playhead
       var bestTopMidi = Math.round(this.displayTopMidi);
@@ -495,56 +499,33 @@
         ctx.stroke();
       }
 
-      // Note events — draw repeating across visible cycles (pianoroll style)
-      //
-      // Events have cycle-relative times [0,1). We repeat them at every
-      // cycle that falls within the visible range, so the user sees the
-      // rhythmic structure repeating naturally.
-      var VISIBLE_CYCLES = 2;        // cycles visible in the grid
-      var CYCLE_PX = gridW / VISIBLE_CYCLES;  // pixels per cycle
-      // Time range visible on screen (cycles):
-      var visLeft  = absoluteTime - PLAYHEAD_FRAC * VISIBLE_CYCLES;
-      var visRight = absoluteTime + (1 - PLAYHEAD_FRAC) * VISIBLE_CYCLES;
-
+            // Note events - draw using absolute time positions
       for (var r = 0; r < nRows; r++) {
         var rl = rowLayout[r];
         var y = rl.y - this.scrollY;
 
+        // Skip rows outside visible area
         if (y + rl.h < 0 || y > visibleHeight) continue;
-
-        var drawn = {};
 
         (this.events || []).forEach(function(ev) {
           if (ev.label !== rl.label) return;
+          // Calculate relative position from current playhead position
+          var relTime = ev.time - absoluteTime;
+          var pixelOffset = relTime * gridW;
+          var ex = PLAYHEAD_X + pixelOffset;
+          var ew = Math.max(3, gridW / 80);
+          var eh = rl.h - 2;
 
-          // First and last cycle instances visible for this event
-          var firstCycle = Math.floor(visLeft - ev.time) + 1;
-          var lastCycle  = Math.ceil(visRight - ev.time) - 1;
+          if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
 
-          for (var c = firstCycle; c <= lastCycle; c++) {
-            var instanceTime = ev.time + c;
-            var relTime = instanceTime - absoluteTime;
-            var pixelOffset = relTime * CYCLE_PX;
-            var ex = PLAYHEAD_X + pixelOffset;
-            var ew = Math.max(3, CYCLE_PX / 20);
-            var eh = rl.h - 2;
+          var dist = Math.abs(relTime);
+          var alpha = Math.max(0.08, 0.75 - dist * 0.5);
+          if (dist > 3) alpha = 0.05;
 
-            if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) continue;
-
-            var bucket = Math.round(relTime * 100).toString();
-            var dedupKey = bucket + ':' + ev.label;
-            if (drawn[dedupKey]) continue;
-            drawn[dedupKey] = true;
-
-            var dist = Math.abs(relTime);
-            var alpha = Math.max(0.08, 0.75 - dist * 0.5);
-            if (dist > VISIBLE_CYCLES) alpha = 0.05;
-
-            ctx.fillStyle = 'rgba(255,140,140,' + alpha.toFixed(2) + ')';
-            ctx.beginPath();
-            ctx.roundRect(ex, y + 1, ew, eh, 2);
-            ctx.fill();
-          }
+          ctx.fillStyle = 'rgba(255,140,140,' + alpha.toFixed(2) + ')';
+          ctx.beginPath();
+          ctx.roundRect(ex, y + 1, ew, eh, 2);
+          ctx.fill();
         });
       }
 
@@ -575,7 +556,7 @@
       ctx.strokeStyle = 'rgba(255,255,255,0.06)';
       ctx.lineWidth = 0.5;
       for (var b = -8; b <= 8; b++) {
-        var bx = PLAYHEAD_X + (b / 4 - ph) * CYCLE_PX;
+        var bx = PLAYHEAD_X + (b / 4 - ph) * gridW;
         if (bx < labelW + 4 || bx > labelW + 4 + gridW) continue;
         ctx.beginPath();
         ctx.moveTo(bx, 0);
@@ -832,5 +813,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc7 -- multi-cycle repeat, 2 cycles visible');
+  console.log('[build] 189-pc8 -- query from current cycle, playhead back at left');
 })();
