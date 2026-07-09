@@ -36,6 +36,7 @@
     sidebar.classList.add('open');
     sidebarOverlay.classList.add('open');
   }
+  window.openSidebar = openSidebar;
   function closeSidebar() {
     sidebar.classList.remove('open');
     sidebarOverlay.classList.remove('open');
@@ -937,29 +938,10 @@
     soundsSearch.value = '';
     renderSounds(soundBanks);
   }
+  window.toggleSounds = toggleSounds;
 
   btnSounds.addEventListener('click', toggleSounds);
   btnSoundsClose.addEventListener('click', toggleSounds);
-
-  // Hamburger menu (mobile)
-  btnMenu.addEventListener('click', function(e) {
-    e.stopPropagation();
-    menuDropdown.classList.toggle('open');
-  });
-  menuPreloads.addEventListener('click', function() {
-    menuDropdown.classList.remove('open');
-    openSidebar();
-  });
-  menuSounds.addEventListener('click', function() {
-    menuDropdown.classList.remove('open');
-    toggleSounds();
-  });
-  // Close dropdown when clicking outside
-  document.addEventListener('click', function(e) {
-    if (!menuDropdown.contains(e.target) && e.target !== btnMenu) {
-      menuDropdown.classList.remove('open');
-    }
-  });
 
   // Close sounds panel if clicking outside
   document.addEventListener('click', function(e) {
@@ -987,5 +969,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc13 -- fix dropdown positioning (topbar relative)');
+  console.log('[build] 189-pc14 -- inline onclick for hamburger menu');
 })();

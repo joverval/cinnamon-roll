@@ -12,7 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body onclick="var d=document.getElementById('menuDropdown');if(!d.contains(event.target)&&event.target.id!=='btnMenu')d.classList.remove('open')">
 
   <!-- Top bar -->
   <div class="topbar">
@@ -33,16 +33,16 @@
       <button class="btn btn-sounds" id="btnSounds" aria-label="Toggle sounds">
         🔊 Sounds
       </button>
-      <button class="btn btn-menu" id="btnMenu" aria-label="Menu">
+      <button class="btn btn-menu" id="btnMenu" aria-label="Menu" onclick="document.getElementById('menuDropdown').classList.toggle('open')">
         ☰
       </button>
     </div>
   </div>
 
   <!-- Mobile menu dropdown -->
-  <div class="menu-dropdown" id="menuDropdown">
-    <button class="menu-item" id="menuPreloads">📂 Preloads</button>
-    <button class="menu-item" id="menuSounds">🔊 Sounds</button>
+  <div class="menu-dropdown" id="menuDropdown" onclick="event.stopPropagation()">
+    <button class="menu-item" id="menuPreloads" onclick="this.parentElement.classList.remove('open');openSidebar()">📂 Preloads</button>
+    <button class="menu-item" id="menuSounds" onclick="this.parentElement.classList.remove('open');toggleSounds()">🔊 Sounds</button>
   </div>
 
   <!-- Sidebar overlay (mobile) -->
