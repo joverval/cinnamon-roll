@@ -13,6 +13,10 @@
   const soundsPanel = document.getElementById('soundsPanel');
   const soundsList  = document.getElementById('soundsList');
   const soundsSearch = document.getElementById('soundsSearch');
+  const btnMenu = document.getElementById('btnMenu');
+  const menuDropdown = document.getElementById('menuDropdown');
+  const menuPreloads = document.getElementById('menuPreloads');
+  const menuSounds = document.getElementById('menuSounds');
   const preloadList = document.getElementById('preloadList');
   const statusText = document.getElementById('statusText');
   const errorPanel = document.getElementById('errorPanel');
@@ -937,6 +941,26 @@
   btnSounds.addEventListener('click', toggleSounds);
   btnSoundsClose.addEventListener('click', toggleSounds);
 
+  // Hamburger menu (mobile)
+  btnMenu.addEventListener('click', function(e) {
+    e.stopPropagation();
+    menuDropdown.classList.toggle('open');
+  });
+  menuPreloads.addEventListener('click', function() {
+    menuDropdown.classList.remove('open');
+    openSidebar();
+  });
+  menuSounds.addEventListener('click', function() {
+    menuDropdown.classList.remove('open');
+    toggleSounds();
+  });
+  // Close dropdown when clicking outside
+  document.addEventListener('click', function(e) {
+    if (!menuDropdown.contains(e.target) && e.target !== btnMenu) {
+      menuDropdown.classList.remove('open');
+    }
+  });
+
   // Close sounds panel if clicking outside
   document.addEventListener('click', function(e) {
     if (soundsPanel.classList.contains('open') &&
@@ -963,5 +987,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc10 -- sounds panel accordion for multi-sample banks');
+  console.log('[build] 189-pc11 -- hamburger menu for mobile (preloads + sounds)');
 })();
