@@ -82,7 +82,7 @@
         <button class="btn btn-play" id="btnPlay">▶ Play</button>
         <button class="btn btn-pause" id="btnPause">⏸ Pause</button>
         <button class="btn btn-stop" id="btnStop">⏹ Stop</button>
-        <span class="status-text" id="statusText"></span>
+        <button class="btn btn-export" id="btnExport" disabled>⏺ Export</button>
       </div>
 
       <div class="error-panel" id="errorPanel"></div>
@@ -99,6 +99,29 @@
         <div class="sounds-loading">Loading...</div>
       </div>
     </aside>
+  </div>
+
+  <!-- Export modal -->
+  <div class="export-overlay" id="exportOverlay">
+    <div class="export-modal">
+      <h3>Export Audio</h3>
+      <div class="export-settings" id="exportSettings">
+        <p class="export-label">Duration</p>
+        <div class="export-duration-row">
+          <input class="export-input" type="text" id="exportDuration" value="1:00" placeholder="1:00" autocomplete="off" />
+          <span class="export-hint">mm:ss or seconds</span>
+        </div>
+        <p class="export-info">Exports from cycle 0 at 128 kbps MP3</p>
+      </div>
+      <div class="export-progress" id="exportProgress" style="display:none">
+        <span id="exportTimer">0:00</span>
+        <div class="export-bar-track"><div class="export-bar-fill" id="exportBarFill"></div></div>
+      </div>
+      <div class="export-actions">
+        <button class="btn btn-export-cancel" id="btnExportCancel">Cancel</button>
+        <button class="btn btn-export-proceed" id="btnExportProceed">Proceed</button>
+      </div>
+    </div>
   </div>
 
   <!-- Strudel engine -->

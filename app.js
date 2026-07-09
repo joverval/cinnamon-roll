@@ -18,8 +18,18 @@
   const menuPreloads = document.getElementById('menuPreloads');
   const menuSounds = document.getElementById('menuSounds');
   const preloadList = document.getElementById('preloadList');
-  const statusText = document.getElementById('statusText');
   const errorPanel = document.getElementById('errorPanel');
+
+  // Export
+  const btnExport = document.getElementById('btnExport');
+  const exportOverlay = document.getElementById('exportOverlay');
+  const exportSettings = document.getElementById('exportSettings');
+  const exportDuration = document.getElementById('exportDuration');
+  const exportProgress = document.getElementById('exportProgress');
+  const exportTimer = document.getElementById('exportTimer');
+  const exportBarFill = document.getElementById('exportBarFill');
+  const btnExportProceed = document.getElementById('btnExportProceed');
+  const btnExportCancel = document.getElementById('btnExportCancel');
 
   let repl = null; // Store the Strudel repl instance
   let isPaused = false; // Track pause state
@@ -46,15 +56,38 @@
   sidebarOverlay.addEventListener('click', closeSidebar);
 
   /* ── Status / errors ── */
-  function setStatus(msg, cls) {
-    statusText.textContent = msg;
-    statusText.className = 'status-text ' + (cls || '');
+  function clearButtonStates() {
+    btnPlay.classList.remove('playing');
+    btnPause.classList.remove('paused');
+    btnExport.classList.remove('recording');
+    btnPlay.disabled = false;
+    btnPause.disabled = false;
+    btnStop.disabled = false;
+    var hasCode = editor.value.trim().length > 0;
+    btnExport.disabled = !hasCode || !engineReady;
+  }
+
+  function setPlayingState() {
+    clearButtonStates();
+    btnPlay.classList.add('playing');
+    btnPause.disabled = false;
+    btnStop.disabled = false;
+    btnExport.disabled = true;
+  }
+
+  function setPausedState() {
+    clearButtonStates();
+    btnPause.classList.add('paused');
+    btnExport.disabled = true;
+  }
+
+  function setStoppedState() {
+    clearButtonStates();
   }
 
   function showError(msg) {
     errorPanel.textContent = msg;
     errorPanel.classList.add('visible');
-    setStatus('Error', 'error');
   }
 
   function clearError() {
@@ -579,7 +612,6 @@
 
   /* ── Engine init ── */
   async function initEngine() {
-    setStatus('Loading samples...');
     try {
       // initStrudel is global from @strudel/web script
       repl = await initStrudel({
@@ -587,7 +619,7 @@
       });
       console.log('[repl] initialized, methods:', Object.keys(repl || {}));
       engineReady = true;
-      setStatus('Ready');
+      clearButtonStates();
 
       // Capture the initial cps so Stop can restore it after user setcps() calls
       try { if (typeof cps === 'function') defaultCps = Number(cps()) || 0.5; } catch(e) {}
@@ -601,7 +633,7 @@
       });
     } catch (e) {
       engineReady = false;
-      setStatus('Failed to load samples', 'error');
+      showError('Failed to load samples: ' + e.message);
       console.error(e);
     }
   }
@@ -612,7 +644,7 @@
 
   async function play() {
     if (!engineReady) {
-      setStatus('Samples still loading...', 'error');
+      showError('Samples still loading...');
       return;
     }
     var code = editor.value.trim();
@@ -660,7 +692,7 @@
 
       isPlaying = true;
       isPaused = false;
-      setStatus('Playing', 'playing');
+      setPlayingState();
 
       if (pattern && shouldVisualize) punchcard.buildFromPattern(pattern);
     } catch (e) {
@@ -676,7 +708,7 @@
     try { if (typeof hush !== 'undefined') hush(); } catch(e) {}
     isPlaying = false;
     isPaused = true;
-    setStatus('Paused');
+    setPausedState();
     punchcard.stop();
   }
 
@@ -698,7 +730,7 @@
 
     isPlaying = false;
     isPaused = false;
-    setStatus('Stopped');
+    setStoppedState();
     punchcard.stop();
   }
 
@@ -718,6 +750,362 @@
       pause();
     }
   });
+
+  /* ── Export ── */
+  var lamejsLoaded = false;
+  var captureNode = null;
+  var outputGainNode = null;
+  var origConnect = null;
+
+  // Monkey-patch: capture the final GainNode that connects to AudioContext.destination
+  if (typeof AudioNode !== 'undefined') {
+    origConnect = AudioNode.prototype.connect;
+    AudioNode.prototype.connect = function(dest) {
+      if (dest && dest.maxChannelCount !== undefined && dest.maxChannelCount > 0
+          && dest.channelCount !== undefined && this instanceof GainNode) {
+        // dest is an AudioDestinationNode, and this is a GainNode
+        outputGainNode = this;
+      }
+      var args = [].slice.call(arguments);
+      // If the first arg is an AudioParam (number of outputs differs), handle that
+      if (dest instanceof AudioParam) {
+        return origConnect.apply(this, args);
+      }
+      return origConnect.apply(this, args);
+    };
+  }
+
+  function getAudioCtx() {
+    try {
+      if (typeof getAudioContext === 'function') return getAudioContext();
+      if (repl && repl.scheduler && repl.scheduler.clock && repl.scheduler.clock._audioContext) {
+        return repl.scheduler.clock._audioContext;
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  function loadLamejs(cb) {
+    if (lamejsLoaded) { cb(); return; }
+    var s = document.createElement('script');
+    s.src = 'https://unpkg.com/lamejs@1.2.1/lame.min.js';
+    s.onload = function() { lamejsLoaded = true; cb(); };
+    s.onerror = function() { showError('Failed to load MP3 encoder'); };
+    document.head.appendChild(s);
+  }
+
+  function parseDuration(val) {
+    val = (val || '').trim();
+    // mm:ss
+    var mmss = val.match(/^(\d+):(\d{1,2})$/);
+    if (mmss) return parseInt(mmss[1]) * 60 + parseInt(mmss[2]);
+    // plain seconds
+    var secs = parseFloat(val);
+    if (isFinite(secs) && secs > 0) return secs;
+    return null;
+  }
+
+  function formatTime(secs) {
+    var m = Math.floor(secs / 60);
+    var s = Math.floor(secs % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function openExportModal() {
+    exportDuration.value = '1:00';
+    exportSettings.style.display = '';
+    exportProgress.style.display = 'none';
+    btnExportProceed.style.display = '';
+    btnExportProceed.disabled = false;
+    exportOverlay.classList.add('open');
+    exportDuration.focus();
+    exportDuration.select();
+  }
+
+  function closeExportModal() {
+    exportOverlay.classList.remove('open');
+  }
+
+  btnExport.addEventListener('click', function() {
+    if (!engineReady || !editor.value.trim()) return;
+    openExportModal();
+  });
+
+  btnExportCancel.addEventListener('click', function() {
+    if (btnExport.classList.contains('recording')) {
+      cancelExport();
+    } else {
+      closeExportModal();
+    }
+  });
+
+  exportOverlay.addEventListener('click', function(e) {
+    if (e.target === exportOverlay) {
+      if (btnExport.classList.contains('recording')) {
+        cancelExport();
+      } else {
+        closeExportModal();
+      }
+    }
+  });
+
+  // Enable Export button as user types
+  editor.addEventListener('input', function() {
+    clearButtonStates();
+  });
+
+  exportDuration.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') startExport();
+  });
+
+  var exportTimerId = null;
+  var mediaRecorder = null;
+  var recordedChunks = [];
+  var exportCancelled = false;
+
+  btnExportProceed.addEventListener('click', startExport);
+
+  function cancelExport() {
+    exportCancelled = true;
+    if (exportTimerId) { clearInterval(exportTimerId); exportTimerId = null; }
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    recordedChunks = [];
+    stop();
+    var ctx = getAudioCtx();
+    restoreOutputRouting(ctx);
+    btnExport.classList.remove('recording');
+    btnExport.textContent = '⏺ Export';
+    setStoppedState();
+    closeExportModal();
+  }
+
+  function startExport() {
+    var duration = parseDuration(exportDuration.value);
+    if (!duration || duration < 0.5) {
+      exportDuration.style.borderColor = 'var(--red)';
+      setTimeout(function() { exportDuration.style.borderColor = ''; }, 600);
+      return;
+    }
+    if (duration > 600) {
+      showError('Max export duration is 10 minutes');
+      return;
+    }
+
+    var code = editor.value.trim();
+    if (!code) return;
+
+    loadLamejs(function() {
+      doExport(code, duration);
+    });
+  }
+
+  function doExport(code, duration) {
+    exportCancelled = false;
+    // Switch to progress view
+    exportSettings.style.display = 'none';
+    exportProgress.style.display = 'block';
+    btnExportProceed.style.display = 'none';
+    exportTimer.textContent = formatTime(duration);
+
+    // Stop, reset cycle to 0
+    stop();
+
+    var ctx = getAudioCtx();
+    if (!ctx) {
+      showError('Could not access audio context');
+      closeExportModal();
+      return;
+    }
+
+    // Create capture node
+    if (captureNode) { captureNode.disconnect(); }
+    captureNode = ctx.createMediaStreamDestination();
+    captureNode.channelCount = 2;
+
+    // Insert capture into the output path
+    // If we found the output gain node, redirect it
+    var rerouted = false;
+    if (outputGainNode) {
+      try {
+        outputGainNode.disconnect(ctx.destination);
+        outputGainNode.connect(captureNode);
+        captureNode.connect(ctx.destination);
+        rerouted = true;
+      } catch(e) {
+        console.warn('[export] Could not reroute audio graph:', e);
+      }
+    }
+
+    if (!rerouted) {
+      // Fallback: try to connect captureNode to destination as a parallel sink
+      // and hope the audio routing captures everything
+      try {
+        captureNode.connect(ctx.destination);
+      } catch(e) {}
+    }
+
+    // Set up MediaRecorder
+    recordedChunks = [];
+    var mimeType = 'audio/webm;codecs=opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+      mimeType = 'audio/webm';
+    }
+    try {
+      mediaRecorder = new MediaRecorder(captureNode.stream, { mimeType: mimeType });
+    } catch(e) {
+      showError('Recording not supported in this browser');
+      restoreOutputRouting(ctx);
+      closeExportModal();
+      return;
+    }
+
+    mediaRecorder.ondataavailable = function(e) {
+      if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = function() {
+      processRecording(duration);
+    };
+
+    mediaRecorder.start();
+
+    // Show recording state
+    btnExport.classList.add('recording');
+    btnExport.textContent = '⏺ Recording...';
+    btnPlay.disabled = true;
+    btnPause.disabled = true;
+    btnStop.disabled = true;
+    var startTime = Date.now();
+
+    exportTimerId = setInterval(function() {
+      var elapsed = (Date.now() - startTime) / 1000;
+      var remaining = Math.max(0, duration - elapsed);
+      exportTimer.textContent = formatTime(remaining);
+      exportBarFill.style.width = (elapsed / duration * 100) + '%';
+
+      if (elapsed >= duration) {
+        clearInterval(exportTimerId);
+        exportTimerId = null;
+        mediaRecorder.stop();
+        stop();
+      }
+    }, 200);
+
+    // Start playback from cycle 0
+    play().then(function() {
+      // play() calls setPlayingState() which resets buttons.
+      // Re-apply recording state on top.
+      if (exportTimerId) {
+        btnPlay.classList.remove('playing');
+        btnPlay.disabled = true;
+        btnPause.disabled = true;
+        btnStop.disabled = true;
+        btnExport.classList.add('recording');
+        btnExport.disabled = false;
+      }
+    });
+  }
+
+  function restoreOutputRouting(ctx) {
+    if (outputGainNode && captureNode) {
+      try {
+        outputGainNode.disconnect(captureNode);
+        outputGainNode.connect(ctx.destination);
+      } catch(e) {}
+    }
+    if (captureNode) {
+      try { captureNode.disconnect(); } catch(e) {}
+      captureNode = null;
+    }
+  }
+
+  function processRecording(duration) {
+    var ctx = getAudioCtx();
+    restoreOutputRouting(ctx);
+
+    if (exportCancelled) {
+      exportCancelled = false;
+      return;
+    }
+
+    // Reset UI
+    btnExport.classList.remove('recording');
+    btnExport.textContent = '⏺ Export';
+    setStoppedState();
+    closeExportModal();
+
+    if (recordedChunks.length === 0) {
+      showError('No audio recorded');
+      return;
+    }
+
+    var blob = new Blob(recordedChunks, { type: 'audio/webm' });
+    recordedChunks = [];
+
+    // Decode → encode MP3
+    var reader = new FileReader();
+    reader.onload = function() {
+      var arrayBuffer = reader.result;
+      if (!ctx) { showError('Audio context unavailable'); return; }
+      ctx.decodeAudioData(arrayBuffer, function(audioBuffer) {
+        try {
+          var mp3Blob = encodeMp3(audioBuffer);
+          triggerDownload(mp3Blob);
+        } catch(e) {
+          showError('MP3 encoding failed: ' + e.message);
+          console.error(e);
+        }
+      }, function() {
+        showError('Could not decode recorded audio');
+      });
+    };
+    reader.readAsArrayBuffer(blob);
+  }
+
+  function encodeMp3(audioBuffer) {
+    var sampleRate = audioBuffer.sampleRate;
+    var channels = Math.min(audioBuffer.numberOfChannels, 2);
+    var encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
+
+    var left = audioBuffer.getChannelData(0);
+    var right = channels > 1 ? audioBuffer.getChannelData(1) : left;
+    var sampleBlockSize = 1152;
+    var mp3Data = [];
+
+    for (var i = 0; i < left.length; i += sampleBlockSize) {
+      var leftChunk = left.subarray(i, i + sampleBlockSize);
+      var rightChunk = right.subarray(i, i + sampleBlockSize);
+
+      // Convert Float32 [-1,1] to Int16
+      var left16 = new Int16Array(leftChunk.length);
+      var right16 = new Int16Array(rightChunk.length);
+      for (var j = 0; j < leftChunk.length; j++) {
+        left16[j] = Math.max(-32768, Math.min(32767, leftChunk[j] * 32767.5));
+        right16[j] = Math.max(-32768, Math.min(32767, rightChunk[j] * 32767.5));
+      }
+
+      var mp3buf = encoder.encodeBuffer(left16, right16);
+      if (mp3buf.length > 0) mp3Data.push(mp3buf);
+    }
+
+    var finalBuf = encoder.flush();
+    if (finalBuf.length > 0) mp3Data.push(finalBuf);
+
+    return new Blob(mp3Data, { type: 'audio/mpeg' });
+  }
+
+  function triggerDownload(blob) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'cinnamon-roll-export.mp3';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+  }
 
   /* ── Preloads ── */
   const PRELOADS_BASE = 'preloads';
@@ -755,7 +1143,6 @@
   }
 
   async function loadPreloadFile(url, name) {
-    setStatus('Loading ' + name + '...');
     clearError();
     try {
       const resp = await fetch(url);
@@ -775,8 +1162,6 @@
         }
       });
       activePreload = name;
-
-      setStatus('Loaded: ' + name);
 
       // Auto-play on load
       stop();
@@ -969,5 +1354,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc15 -- debug menu onclick -- inline onclick for hamburger menu');
+  console.log('[build] 190-export -- export to MP3 at 128kbps, button states replace statusText');
 })();

@@ -508,16 +508,164 @@ body {
 }
 .btn-menu:hover { background: var(--surface-hover); }
 
-.status-text {
-  font-size: 13px;
+.btn-export {
+  background: var(--surface);
   color: var(--text-muted);
-  margin-left: auto;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  border: 1px solid var(--border);
+  min-width: 110px;
 }
-.status-text.error { color: var(--red); }
-.status-text.playing { color: var(--green); }
+.btn-export:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.btn-export:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+.btn-export.recording {
+  background: rgba(255, 107, 107, 0.15);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  animation: export-pulse 1s ease-in-out infinite;
+}
+
+@keyframes export-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 107, 107, 0); }
+}
+
+/* ── Active button states ── */
+.btn-play.playing {
+  box-shadow: 0 0 12px rgba(105, 219, 124, 0.4);
+}
+.btn-pause.paused {
+  background: var(--yellow);
+  color: #1a1a1f;
+}
+
+/* ── Export modal ── */
+.export-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 40;
+  align-items: center;
+  justify-content: center;
+}
+.export-overlay.open {
+  display: flex;
+}
+
+.export-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  width: 380px;
+  max-width: 90vw;
+}
+
+.export-modal h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 20px;
+}
+
+.export-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.export-duration-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.export-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 20px;
+  width: 120px;
+  outline: none;
+  text-align: center;
+}
+.export-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.export-hint {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.export-info {
+  font-size: 12px;
+  color: var(--text-soft);
+  margin-bottom: 20px;
+}
+
+.export-progress {
+  margin-bottom: 20px;
+}
+
+.export-progress span {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  color: var(--accent-text);
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.export-bar-track {
+  background: var(--bg);
+  border-radius: 4px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.export-bar-fill {
+  background: var(--accent);
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  transition: width 0.3s linear;
+}
+
+.export-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btn-export-cancel {
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  padding: 12px 24px;
+}
+
+.btn-export-cancel:hover { background: var(--surface-hover); }
+
+.btn-export-proceed {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+}
+.btn-export-proceed:hover { background: #ff5252; }
+
+.btn-export-proceed:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 /* ── Error panel ── */
 .error-panel {
