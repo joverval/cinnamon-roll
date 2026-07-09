@@ -327,14 +327,6 @@
 
       if (!this.events || this.events.length === 0) return;
 
-      // DEBUG: log once per second
-      if (!this._dbgCount || performance.now() - this._dbgCount > 1000) {
-        this._dbgCount = performance.now();
-        console.log('[pc4-draw] events=' + this.events.length +
-          ' rows=' + this.rows.length +
-          ' w=' + w.toFixed(0) + ' h=' + h.toFixed(0));
-      }
-
       // ── Sliding 15-semitone window: follows densest note cluster ──
       var noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
       var BLACK_FACTOR = 0.5;
@@ -352,7 +344,8 @@
       var ph = absoluteTime - currentCycle;
       var labelW = 60;
       var gridW = w - labelW - 8;
-      var PLAYHEAD_X = labelW + 4;
+      var PLAYHEAD_FRAC = 0.25;   // playhead at 25% from left → 0.25 behind, 0.75 ahead
+      var PLAYHEAD_X = labelW + 4 + gridW * PLAYHEAD_FRAC;
 
       // Find the best 15-note window from events near the playhead
       var bestTopMidi = Math.round(this.displayTopMidi);
@@ -502,45 +495,46 @@
         ctx.stroke();
       }
 
-      // Note events — wrap each event to the visible cycle nearest the playhead
+      // Note events — smooth scrolling around playhead, no wrapping jumps
+      //
+      // rawRelTime = ev.time – absoluteTime   (can be any value)
+      // We map each event to the nearest cycle instance, then determine
+      // whether it lands in the visible range [-PLAYHEAD_FRAC, 1-PLAYHEAD_FRAC).
+      // This avoids ceil/round discontinuities; events scroll smoothly.
       for (var r = 0; r < nRows; r++) {
         var rl = rowLayout[r];
         var y = rl.y - this.scrollY;
 
-        // Skip rows outside visible area
         if (y + rl.h < 0 || y > visibleHeight) continue;
 
-        // Dedup map per frame: one dot per (position×4, label) regardless of
-        // how many captured-cycle instances map to the same wrapped position.
         var drawn = {};
 
         (this.events || []).forEach(function(ev) {
           if (ev.label !== rl.label) return;
-          // Shift event forward to the next cycle instance ≥ playhead.
-          // Math.ceil ensures relTime ∈ [0, 1) so nothing is clipped left.
-          // e.g. ev.time=0.211 at getTime=2.228 → ceil(2.017)=3 → rel=0.983
-          var forwardCycle = Math.ceil(absoluteTime - ev.time);
-          var relTime = ev.time + forwardCycle - absoluteTime;
+
+          var rawRel = ev.time - absoluteTime;
+          // Wrap to [0, 1) — the position within a single cycle
+          var cycleRel = ((rawRel % 1) + 1) % 1;
+
+          // Map to display-relative where:
+          //   [0,             1-PLAYHEAD_FRAC) → ahead of playhead
+          //   [1-PLAYHEAD_FRAC, 1)             → behind playhead (just wrapped)
+          var relTime;
+          if (cycleRel >= 1 - PLAYHEAD_FRAC) {
+            relTime = cycleRel - 1;   // negative: behind playhead
+          } else {
+            relTime = cycleRel;       // positive: ahead of playhead
+          }
+
           var pixelOffset = relTime * gridW;
           var ex = PLAYHEAD_X + pixelOffset;
           var ew = Math.max(3, gridW / 80);
           var eh = rl.h - 2;
 
+          // Clip to visible grid area
           if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
 
-          // DEBUG: log once per second to verify wrapping is working
-          if (!punchcard._dbgLast || performance.now() - punchcard._dbgLast > 1000) {
-            punchcard._dbgLast = performance.now();
-            console.log('[pc4-draw] getTime=' + absoluteTime.toFixed(3) +
-              ' ev.time=' + ev.time.toFixed(3) +
-              ' fc=' + forwardCycle +
-              ' relTime=' + relTime.toFixed(3) +
-              ' ex=' + ex.toFixed(0) +
-              ' gridW=' + gridW.toFixed(0) +
-              ' label=' + ev.label);
-          }
-
-          // Deduplicate: one visible instance per (position bucket, label)
+          // Deduplicate: one dot per (position bucket, label) per frame
           var bucket = Math.round(relTime * 100).toString();
           var dedupKey = bucket + ':' + ev.label;
           if (drawn[dedupKey]) return;
@@ -841,5 +835,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc5 -- ceil-wrap + draw debug logging');
+  console.log('[build] 189-pc6 -- playhead at 25%, smooth modulo wrap, no jumps');
 })();
