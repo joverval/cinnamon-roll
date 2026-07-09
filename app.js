@@ -495,12 +495,17 @@
         ctx.stroke();
       }
 
-      // Note events — smooth scrolling around playhead, no wrapping jumps
+      // Note events — draw repeating across visible cycles (pianoroll style)
       //
-      // rawRelTime = ev.time – absoluteTime   (can be any value)
-      // We map each event to the nearest cycle instance, then determine
-      // whether it lands in the visible range [-PLAYHEAD_FRAC, 1-PLAYHEAD_FRAC).
-      // This avoids ceil/round discontinuities; events scroll smoothly.
+      // Events have cycle-relative times [0,1). We repeat them at every
+      // cycle that falls within the visible range, so the user sees the
+      // rhythmic structure repeating naturally.
+      var VISIBLE_CYCLES = 2;        // cycles visible in the grid
+      var CYCLE_PX = gridW / VISIBLE_CYCLES;  // pixels per cycle
+      // Time range visible on screen (cycles):
+      var visLeft  = absoluteTime - PLAYHEAD_FRAC * VISIBLE_CYCLES;
+      var visRight = absoluteTime + (1 - PLAYHEAD_FRAC) * VISIBLE_CYCLES;
+
       for (var r = 0; r < nRows; r++) {
         var rl = rowLayout[r];
         var y = rl.y - this.scrollY;
@@ -512,42 +517,34 @@
         (this.events || []).forEach(function(ev) {
           if (ev.label !== rl.label) return;
 
-          var rawRel = ev.time - absoluteTime;
-          // Wrap to [0, 1) — the position within a single cycle
-          var cycleRel = ((rawRel % 1) + 1) % 1;
+          // First and last cycle instances visible for this event
+          var firstCycle = Math.floor(visLeft - ev.time) + 1;
+          var lastCycle  = Math.ceil(visRight - ev.time) - 1;
 
-          // Map to display-relative where:
-          //   [0,             1-PLAYHEAD_FRAC) → ahead of playhead
-          //   [1-PLAYHEAD_FRAC, 1)             → behind playhead (just wrapped)
-          var relTime;
-          if (cycleRel >= 1 - PLAYHEAD_FRAC) {
-            relTime = cycleRel - 1;   // negative: behind playhead
-          } else {
-            relTime = cycleRel;       // positive: ahead of playhead
+          for (var c = firstCycle; c <= lastCycle; c++) {
+            var instanceTime = ev.time + c;
+            var relTime = instanceTime - absoluteTime;
+            var pixelOffset = relTime * CYCLE_PX;
+            var ex = PLAYHEAD_X + pixelOffset;
+            var ew = Math.max(3, CYCLE_PX / 20);
+            var eh = rl.h - 2;
+
+            if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) continue;
+
+            var bucket = Math.round(relTime * 100).toString();
+            var dedupKey = bucket + ':' + ev.label;
+            if (drawn[dedupKey]) continue;
+            drawn[dedupKey] = true;
+
+            var dist = Math.abs(relTime);
+            var alpha = Math.max(0.08, 0.75 - dist * 0.5);
+            if (dist > VISIBLE_CYCLES) alpha = 0.05;
+
+            ctx.fillStyle = 'rgba(255,140,140,' + alpha.toFixed(2) + ')';
+            ctx.beginPath();
+            ctx.roundRect(ex, y + 1, ew, eh, 2);
+            ctx.fill();
           }
-
-          var pixelOffset = relTime * gridW;
-          var ex = PLAYHEAD_X + pixelOffset;
-          var ew = Math.max(3, gridW / 80);
-          var eh = rl.h - 2;
-
-          // Clip to visible grid area
-          if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
-
-          // Deduplicate: one dot per (position bucket, label) per frame
-          var bucket = Math.round(relTime * 100).toString();
-          var dedupKey = bucket + ':' + ev.label;
-          if (drawn[dedupKey]) return;
-          drawn[dedupKey] = true;
-
-          var dist = Math.abs(relTime);
-          var alpha = Math.max(0.08, 0.75 - dist * 0.5);
-          if (dist > 3) alpha = 0.05;
-
-          ctx.fillStyle = 'rgba(255,140,140,' + alpha.toFixed(2) + ')';
-          ctx.beginPath();
-          ctx.roundRect(ex, y + 1, ew, eh, 2);
-          ctx.fill();
         });
       }
 
@@ -578,7 +575,7 @@
       ctx.strokeStyle = 'rgba(255,255,255,0.06)';
       ctx.lineWidth = 0.5;
       for (var b = -8; b <= 8; b++) {
-        var bx = PLAYHEAD_X + (b / 4 - ph) * gridW;
+        var bx = PLAYHEAD_X + (b / 4 - ph) * CYCLE_PX;
         if (bx < labelW + 4 || bx > labelW + 4 + gridW) continue;
         ctx.beginPath();
         ctx.moveTo(bx, 0);
@@ -835,5 +832,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc6 -- playhead at 25%, smooth modulo wrap, no jumps');
+  console.log('[build] 189-pc7 -- multi-cycle repeat, 2 cycles visible');
 })();
