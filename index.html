@@ -30,6 +30,9 @@
       <button class="btn btn-preloads" id="btnPreloads" aria-label="Open preloads">
         📂 Preloads
       </button>
+      <button class="btn btn-sounds" id="btnSounds" aria-label="Toggle sounds">
+        🔊 Sounds
+      </button>
     </div>
   </div>
 
@@ -75,6 +78,18 @@
 
       <div class="error-panel" id="errorPanel"></div>
     </div>
+
+    <!-- Sounds panel (right side, desktop) -->
+    <aside class="sounds-panel" id="soundsPanel">
+      <div class="sounds-header">
+        <h2>Sounds</h2>
+        <input class="sounds-search" type="text" id="soundsSearch" placeholder="Filter..." autocomplete="off" />
+        <button class="sounds-close" id="btnSoundsClose" aria-label="Close">&times;</button>
+      </div>
+      <div class="sounds-list" id="soundsList">
+        <div class="sounds-loading">Loading...</div>
+      </div>
+    </aside>
   </div>
 
   <!-- Strudel engine -->

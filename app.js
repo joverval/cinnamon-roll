@@ -8,6 +8,11 @@
   const btnSidebarClose = document.getElementById('btnSidebarClose');
   const sidebar   = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
+  const btnSounds = document.getElementById('btnSounds');
+  const btnSoundsClose = document.getElementById('btnSoundsClose');
+  const soundsPanel = document.getElementById('soundsPanel');
+  const soundsList  = document.getElementById('soundsList');
+  const soundsSearch = document.getElementById('soundsSearch');
   const preloadList = document.getElementById('preloadList');
   const statusText = document.getElementById('statusText');
   const errorPanel = document.getElementById('errorPanel');
@@ -810,8 +815,118 @@
   /* ── Auto-resize editor on window resize ── */
   // (textarea fills flex container, no manual resize needed)
 
+  /* ── Sounds panel ── */
+  var soundBanks = [];
+  var previewAudioCtx = null;
+
+  function getPreviewCtx() {
+    if (!previewAudioCtx) previewAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (previewAudioCtx.state === 'suspended') previewAudioCtx.resume();
+    return previewAudioCtx;
+  }
+
+  async function playSoundPreview(bank) {
+    try {
+      if (!soundBanks.length) return;
+      var entry = soundBanks.find(function(b) { return b.name === bank; });
+      if (!entry || !entry.samples.length) return;
+      // Use first sample in bank
+      var url = entry.samples[0];
+      var ctx = getPreviewCtx();
+      var resp = await fetch(url);
+      if (!resp.ok) return;
+      var buf = await resp.arrayBuffer();
+      var audioBuf = await ctx.decodeAudioData(buf);
+      var src = ctx.createBufferSource();
+      src.buffer = audioBuf;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch(e) {
+      console.warn('[sounds] preview error:', e);
+    }
+  }
+
+  async function loadSoundBanks() {
+    try {
+      var resp = await fetch('samples/strudel.json');
+      if (!resp.ok) return;
+      var banks = await resp.json();
+      soundBanks = [];
+      var base = banks._base || '';
+      Object.keys(banks).forEach(function(key) {
+        if (key === '_base') return;
+        soundBanks.push({
+          name: key,
+          samples: (banks[key] || []).map(function(s) { return base + s; }),
+          count: (banks[key] || []).length
+        });
+      });
+      soundBanks.sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+      renderSounds(soundBanks);
+    } catch(e) {
+      soundsList.innerHTML = '<div class="preload-error">Failed to load sounds</div>';
+      console.error('[sounds]', e);
+    }
+  }
+
+  function renderSounds(banks) {
+    soundsList.innerHTML = '';
+    banks.forEach(function(bank) {
+      var btn = document.createElement('button');
+      btn.className = 'sounds-item';
+      btn.innerHTML =
+        '<span class="sounds-item-icon">🔊</span>' +
+        '<span class="sounds-item-name">' + escapeHtml(bank.name) + '</span>' +
+        '<span class="sounds-item-count">' + bank.count + '</span>';
+      btn.addEventListener('click', function() {
+        playSoundPreview(bank.name);
+      });
+      soundsList.appendChild(btn);
+    });
+  }
+
+  soundsSearch.addEventListener('input', function() {
+    var q = soundsSearch.value.trim().toLowerCase();
+    if (!q) { renderSounds(soundBanks); return; }
+    var filtered = soundBanks.filter(function(b) { return b.name.toLowerCase().indexOf(q) !== -1; });
+    renderSounds(filtered);
+  });
+
+  function toggleSounds() {
+    var open = soundsPanel.classList.toggle('open');
+    btnSounds.classList.toggle('active', open);
+    soundsSearch.value = '';
+    renderSounds(soundBanks);
+  }
+
+  btnSounds.addEventListener('click', toggleSounds);
+  btnSoundsClose.addEventListener('click', toggleSounds);
+
+  // Close sounds panel if clicking outside
+  document.addEventListener('click', function(e) {
+    if (soundsPanel.classList.contains('open') &&
+        !soundsPanel.contains(e.target) &&
+        e.target !== btnSounds &&
+        !btnSounds.contains(e.target)) {
+      soundsPanel.classList.remove('open');
+      btnSounds.classList.remove('active');
+    }
+  });
+
+  // Sidebar overlay closes both panels
+  sidebarOverlay.addEventListener('click', function() {
+    soundsPanel.classList.remove('open');
+    btnSounds.classList.remove('active');
+  });
+
+  /* ── Check that escapeHtml exists (defined later in preloads section) ── */
+  // (escapeHtml is already defined above; this note is just a reminder)
+
+  // Load sound banks on startup
+  loadSoundBanks();
+
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc8 -- query from current cycle, playhead back at left');
+  console.log('[build] 189-pc9 -- sounds panel (right side, collapsible, click-to-preview)');
 })();
