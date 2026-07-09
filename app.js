@@ -327,6 +327,14 @@
 
       if (!this.events || this.events.length === 0) return;
 
+      // DEBUG: log once per second
+      if (!this._dbgCount || performance.now() - this._dbgCount > 1000) {
+        this._dbgCount = performance.now();
+        console.log('[pc4-draw] events=' + this.events.length +
+          ' rows=' + this.rows.length +
+          ' w=' + w.toFixed(0) + ' h=' + h.toFixed(0));
+      }
+
       // ── Sliding 15-semitone window: follows densest note cluster ──
       var noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
       var BLACK_FACTOR = 0.5;
@@ -519,6 +527,18 @@
           var eh = rl.h - 2;
 
           if (ex + ew < labelW + 4 || ex > labelW + 4 + gridW) return;
+
+          // DEBUG: log once per second to verify wrapping is working
+          if (!punchcard._dbgLast || performance.now() - punchcard._dbgLast > 1000) {
+            punchcard._dbgLast = performance.now();
+            console.log('[pc4-draw] getTime=' + absoluteTime.toFixed(3) +
+              ' ev.time=' + ev.time.toFixed(3) +
+              ' fc=' + forwardCycle +
+              ' relTime=' + relTime.toFixed(3) +
+              ' ex=' + ex.toFixed(0) +
+              ' gridW=' + gridW.toFixed(0) +
+              ' label=' + ev.label);
+          }
 
           // Deduplicate: one visible instance per (position bucket, label)
           var bucket = Math.round(relTime * 100).toString();
@@ -821,5 +841,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc4 -- pianoroll ceil-wrap forward, never behind playhead');
+  console.log('[build] 189-pc5 -- ceil-wrap + draw debug logging');
 })();
