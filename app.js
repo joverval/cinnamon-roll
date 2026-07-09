@@ -987,5 +987,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 189-pc12 -- fix hamburger CSS specificity (btn ordering)');
+  console.log('[build] 189-pc13 -- fix dropdown positioning (topbar relative)');
 })();
