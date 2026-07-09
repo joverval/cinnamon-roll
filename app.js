@@ -901,7 +901,11 @@
       var maxPolyphony = typeof DEFAULT_MAX_POLYPHONY !== 'undefined' ? DEFAULT_MAX_POLYPHONY : 128;
 
       // Evaluate code to get the pattern (renderPatternAudio needs a compiled Pattern)
-      var fullCode = 'setcps(' + cpsVal + ');\n' + code;
+      // Apply same rewrites as play() for compatibility with strudel.cc code
+      var evalCode = code
+        .replace(/\._punchcard\s*\(/g, '.punchcard(')
+        .replace(/\._pianoroll\s*\(/g, '.pianoroll(');
+      var fullCode = 'setcps(' + cpsVal + ');\n' + evalCode;
       await evaluate(fullCode);
       var pattern = repl.pattern;
       if (!pattern || typeof pattern.queryArc !== 'function') {
