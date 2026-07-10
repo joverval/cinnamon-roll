@@ -477,6 +477,15 @@
             } else {
               bestTopMidi = this.findBestWindow(currentEvents, bestTopMidi);
             }
+            // DEBUG: log every ~2 seconds
+            if (!this._dbgLast || absoluteTime - this._dbgLast > 1) {
+              this._dbgLast = absoluteTime;
+              console.log('[pn:dbg] cycle=' + currentCycle + ' | absTime=' + absoluteTime.toFixed(1) +
+                ' | curEv=' + currentEvents.length + ' curMidis=' + curMidis.length +
+                ' minM=' + minM + ' maxM=' + maxM + ' bestTop=' + bestTopMidi +
+                ' displayTop=' + this.displayTopMidi.toFixed(1) +
+                ' | labels=' + JSON.stringify(currentEvents.slice(0, 4).map(function(e){return e.label})));
+            }
           }
         } else {
           // No events in current or adjacent cycles — fall back to time-proximity
