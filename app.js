@@ -935,15 +935,19 @@
       var actualCps = defaultCps;
       try {
         var rawCps = cps();
+        console.log('[export] raw cps() return value:', rawCps, 'type:', typeof rawCps, 'keys:', rawCps ? Object.keys(rawCps) : 'null');
         if (rawCps && typeof rawCps.n === 'number' && typeof rawCps.d === 'number') {
           actualCps = (rawCps.n / rawCps.d) * (rawCps.s || 1);
+          console.log('[export] Fraction path: n=' + rawCps.n + ' d=' + rawCps.d + ' s=' + (rawCps.s || 1) + ' → actualCps=' + actualCps);
         } else {
           var n = Number(rawCps);
           if (isFinite(n) && n > 0) actualCps = n;
+          console.log('[export] Number path: rawCps→' + n + ' → actualCps=' + actualCps);
         }
-      } catch(e) {}
+      } catch(e) { console.error('[export] cps extraction error:', e); }
       // Recalculate cycles using actual tempo; duration × actualCps, ceiling so we don't cut short
       var cycles = Math.ceil(duration * actualCps);
+      console.log('[export] duration=' + duration + 's, defaultCps=' + defaultCps + ', actualCps=' + actualCps + ', cycles=' + cycles + ', sampleRate=' + 44100);
       var sampleRate = 44100;
       var maxPolyphony = typeof DEFAULT_MAX_POLYPHONY !== 'undefined' ? DEFAULT_MAX_POLYPHONY : 128;
 
@@ -977,9 +981,11 @@
         if (typeof renderPatternAudio !== 'function') {
           throw new Error('renderPatternAudio not available. Please reload the page.');
         }
+        console.log('[export] calling renderPatternAudio with cps=' + actualCps + ', startCycle=0, endCycle=' + cycles + ', sr=' + sampleRate + ', maxPoly=' + maxPolyphony);
         await renderPatternAudio(pattern, actualCps, 0, cycles, sampleRate, maxPolyphony, false, 'cinnamon-roll-export');
       } else {
         // MP3: renderPatternAudio outputs WAV. We intercept the download, decode, and re-encode to MP3.
+        console.log('[export] calling renderPatternAudio (MP3 path) with cps=' + actualCps + ', startCycle=0, endCycle=' + cycles);
         await exportMp3(pattern, actualCps, cycles, sampleRate, maxPolyphony);
       }
 
