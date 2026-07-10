@@ -1380,9 +1380,8 @@
       if (typeof url === 'string' && url.indexOf('__sf__') === 0) {
         var sfName = url.slice(6);
         if (!engineReady) return;
-        // Quick evaluate to trigger the soundfont note
         try {
-          var code = 'note(\"c4\").s(\"' + sfName + '\").room(0.3).gain(0.5)';
+          var code = 'note("c4").s("' + sfName + '").room(0.3).gain(0.5)';
           repl.evaluate(code);
         } catch(e) { console.warn('[sounds] sf preview error:', e); }
         return;
