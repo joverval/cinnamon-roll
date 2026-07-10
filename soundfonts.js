@@ -280,6 +280,11 @@
       registerSound(name, function(hapValue, deadline, cps, begin) {
         var cnt = (noteCounts[name] || 0) + 1;
         noteCounts[name] = cnt;
+        // Log ALL arguments to see which one holds the note
+        if (cnt <= 1) {
+          console.log('[soundfonts] ' + name + ' #' + cnt + ': args=' +
+            JSON.stringify([hapValue, deadline, cps, begin, arguments[4], arguments[5]]));
+        }
         var midi = getMidiFromHap(hapValue);
         if (cnt <= 3) {
           console.log('[soundfonts] ' + name + ' #' + cnt + ': midi=' + midi + ' hap=' + JSON.stringify(hapValue));
