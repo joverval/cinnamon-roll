@@ -38,14 +38,14 @@
     gm_electric_bass_finger: ['0330_FluidR3_GM_sf2_file'],
 
     // Strings
-    gm_violin:              ['0400_FluidR3_GM_sf2_file', '0400_JCLive_sf2_file'],
-    gm_viola:               ['0410_FluidR3_GM_sf2_file'],
-    gm_cello:               ['0420_FluidR3_GM_sf2_file'],
-    gm_contrabass:          ['0430_FluidR3_GM_sf2_file'],
-    gm_string_ensemble_1:   ['0480_FluidR3_GM_sf2_file', '0480_JCLive_sf2_file'],
-    gm_tremolo_strings:     ['0440_FluidR3_GM_sf2_file'],
-    gm_pizzicato_strings:   ['0450_FluidR3_GM_sf2_file'],
-    gm_orchestral_harp:     ['0460_FluidR3_GM_sf2_file'],
+    gm_violin:              ['0400_Aspirin_sf2_file', '0400_Chaos_sf2_file', '0400_JCLive_sf2_file', '0400_FluidR3_GM_sf2_file', '0400_GeneralUserGS_sf2_file', '0401_Aspirin_sf2_file', '0401_FluidR3_GM_sf2_file', '0401_GeneralUserGS_sf2_file', '0402_GeneralUserGS_sf2_file'],
+    gm_viola:               ['0410_Aspirin_sf2_file', '0410_FluidR3_GM_sf2_file', '0410_JCLive_sf2_file'],
+    gm_cello:               ['0420_Aspirin_sf2_file', '0420_FluidR3_GM_sf2_file', '0420_JCLive_sf2_file'],
+    gm_contrabass:          ['0430_Aspirin_sf2_file', '0430_FluidR3_GM_sf2_file', '0430_JCLive_sf2_file'],
+    gm_string_ensemble_1:   ['0480_Aspirin_sf2_file', '0480_Chaos_sf2_file', '0480_FluidR3_GM_sf2_file', '0480_GeneralUserGS_sf2_file', '0480_JCLive_sf2_file'],
+    gm_tremolo_strings:     ['0440_Aspirin_sf2_file', '0440_FluidR3_GM_sf2_file'],
+    gm_pizzicato_strings:   ['0450_Aspirin_sf2_file', '0450_FluidR3_GM_sf2_file'],
+    gm_orchestral_harp:     ['0460_Aspirin_sf2_file', '0460_FluidR3_GM_sf2_file', '0460_JCLive_sf2_file'],
 
     // Brass
     gm_trumpet:         ['0560_FluidR3_GM_sf2_file', '0560_JCLive_sf2_file'],
