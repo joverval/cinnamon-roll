@@ -1379,10 +1379,11 @@
       // Soundfont preview: play middle C through strudel scheduler
       if (typeof url === 'string' && url.indexOf('__sf__') === 0) {
         var sfName = url.slice(6);
+        console.log('[sounds] sf preview:', sfName, 'engineReady:', engineReady, 'repl:', !!repl);
         if (!engineReady) return;
         try {
           var code = 'note("c4").s("' + sfName + '").room(0.3).gain(0.5)';
-          repl.evaluate(code);
+          repl.evaluate(code, true);
         } catch(e) { console.warn('[sounds] sf preview error:', e); }
         return;
       }
