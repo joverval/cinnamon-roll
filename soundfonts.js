@@ -267,12 +267,12 @@
 
   // --- Playback ---
 
-  function playNote(presetIds, midi, deadline, cps, hapValue) {
+  function playNote(presetIds, midi, beginTime, cps, hapValue) {
     var ctx;
     try { ctx = getSfCtx(); } catch(e) {}
     if (!ctx || ctx.state === 'closed') return;
 
-    var begin = typeof deadline === 'number' ? deadline : ctx.currentTime;
+    var begin = typeof beginTime === 'number' ? beginTime : ctx.currentTime;
     var duration = (hapValue && typeof hapValue.duration === 'number')
       ? hapValue.duration / (cps || 0.5)
       : 2;
@@ -340,7 +340,7 @@
 
       registerSound(name, function(begin, hapValue, deadline, cps) {
         var midi = getMidiFromHap(hapValue);
-        return playNote(presetIds, midi, deadline, cps, hapValue);
+        return playNote(presetIds, midi, begin, cps, hapValue);
       });
     });
 
