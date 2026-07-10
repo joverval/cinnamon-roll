@@ -1,3 +1,5 @@
+// name: Pachelbel Canon
+// description: Melodic rendeirng of Pachelbel's canon
 setcpm(30)
 
 stack(
