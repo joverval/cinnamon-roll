@@ -269,9 +269,6 @@
       return;
     }
 
-    // Debug: log first few notes to verify MIDI extraction
-    var noteCounts = {};
-
     Object.keys(GM).forEach(function(name) {
       if (registered[name]) return;
       registered[name] = true;
@@ -279,12 +276,7 @@
       var presetIds = GM[name];
 
       registerSound(name, function(begin, hapValue, deadline, cps) {
-        var cnt = (noteCounts[name] || 0) + 1;
-        noteCounts[name] = cnt;
         var midi = getMidiFromHap(hapValue);
-        if (cnt <= 3) {
-          console.log('[soundfonts] ' + name + ' #' + cnt + ': midi=' + midi + ' hap=' + JSON.stringify(hapValue));
-        }
         return playNote(presetIds, midi, deadline, cps);
       });
     });
