@@ -133,7 +133,8 @@
   // --- Preset loading ---
 
   function loadPreset(presetId) {
-    if (presetCache[presetId]) return presetCache[presetId];
+    if (presetCache[presetId] === null) return Promise.reject(new Error('Preset ' + presetId + ' previously failed'));
+    if (presetCache[presetId]) return Promise.resolve(presetCache[presetId]);
     var promise = fetch(SF_URL + presetId + '.js')
       .then(function(resp) { return resp.text(); })
       .then(function(js) {
