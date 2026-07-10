@@ -23,7 +23,6 @@ $: n("<[a3,c4,e4,g4] [f3,a3,c4,e4]>").arp("1")
     ._punchcard()
  
 $:  s("bd sd [hh hh] hh*2")
-    .bank("RolandTR909")
     .gain(0.7)
     .crush("<2 4 8>")
     .color("cyan")
