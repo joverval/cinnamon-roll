@@ -148,8 +148,9 @@
               return norm(nn[((midi % 12) + 12) % 12] + oct);
             }
             if (typeof v !== 'object') return null;
+            // Note properties first — .s() adds {s:name} to note values,
+            // so check note-bearing fields before the sound-only fallthrough.
             if (v.note) return norm(String(v.note));
-            if (v.s && !v.note) return String(v.s);  // drum/sample labels don't normalize
             if (v.n != null) {
               var nn = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
               var midi = parseInt(v.n) + 60;
@@ -158,6 +159,8 @@
             }
             if (v.value != null) return norm(String(v.value));
             if (v.freq) return String(Math.round(12 * Math.log2(v.freq / 440) + 69));
+            // Sound-only label (drums, samples) — no note data present
+            if (v.s) return String(v.s);
             return null;
           },
 
