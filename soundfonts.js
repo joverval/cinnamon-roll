@@ -277,7 +277,9 @@
     var duration = (hapValue && typeof hapValue.duration === 'number')
       ? hapValue.duration
       : 2;
-    var gainVal = (hapValue && typeof hapValue.gain === 'number') ? hapValue.gain : 1;
+    var gainVal = (hapValue && typeof hapValue.gain === 'number')
+      ? hapValue.gain * 0.3  // Match strudel's internal max of 0.3
+      : 0.3;
     var adsr = getAdsrDefaults(hapValue);
 
     var tried = 0;
