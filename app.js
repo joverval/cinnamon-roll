@@ -1384,5 +1384,5 @@
   // Report ready
   console.log('%ccinnamon roll ready %cjoverval.cl/cinnamon-roll',
     'color:#ff8a8a;font-weight:bold', 'color:#888');
-  console.log('[build] 191-offline-export -- renderPatternAudio v1.3.0, WAV/MP3, ceiling cycles');
+  console.log('[build] __COMMIT_INFO__');
 })();
