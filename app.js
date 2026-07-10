@@ -795,12 +795,8 @@
     }
     var cpsVal = defaultCps;
     try {
-      var rawCps = cps();
-      if (rawCps && typeof rawCps.n === 'number' && typeof rawCps.d === 'number') {
-        cpsVal = (rawCps.n / rawCps.d) * (rawCps.s || 1);
-      } else {
-        var n = Number(rawCps);
-        if (isFinite(n) && n > 0) cpsVal = n;
+      if (typeof getCps === 'function') {
+        cpsVal = Number(getCps()) || defaultCps;
       }
     } catch(e) {}
     var cycles = Math.ceil(duration * cpsVal);
@@ -933,18 +929,15 @@
       var evalPattern = await evaluate(fullCode);
 
       // Extract the ACTUAL cps now that the pattern has resolved its tempo.
-      // cps() returns a Fraction — convert via n/d (Number() is unreliable on Fractions).
+      // v1.3.0: cps() returns a Pattern object; use getCps() for the numeric value.
       var actualCps = defaultCps;
       try {
-        var rawCps = cps();
-        console.log('[export] raw cps() return value:', rawCps, 'type:', typeof rawCps, 'keys:', rawCps ? Object.keys(rawCps) : 'null');
-        if (rawCps && typeof rawCps.n === 'number' && typeof rawCps.d === 'number') {
-          actualCps = (rawCps.n / rawCps.d) * (rawCps.s || 1);
-          console.log('[export] Fraction path: n=' + rawCps.n + ' d=' + rawCps.d + ' s=' + (rawCps.s || 1) + ' → actualCps=' + actualCps);
+        var getCpsFn = typeof getCps === 'function' ? getCps : null;
+        if (getCpsFn) {
+          actualCps = Number(getCpsFn()) || defaultCps;
+          console.log('[export] getCps() =', actualCps, '(via Number conversion)');
         } else {
-          var n = Number(rawCps);
-          if (isFinite(n) && n > 0) actualCps = n;
-          console.log('[export] Number path: rawCps→' + n + ' → actualCps=' + actualCps);
+          console.log('[export] getCps not available, using defaultCps:', defaultCps);
         }
       } catch(e) { console.error('[export] cps extraction error:', e); }
       // Recalculate cycles using actual tempo; duration × actualCps, ceiling so we don't cut short
