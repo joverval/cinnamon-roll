@@ -681,7 +681,6 @@
       // ticking forward before the pattern starts.
       var fullCode = 'setcps(' + defaultCps + ');\n' + evalCode;
       var evalPattern = await evaluate(fullCode);
-      console.log('[play] after evaluate: cps() type:', cps ? typeof cps() : 'cps not available', ' defaultCps:', defaultCps);
 
       var pattern = null;
       if (repl && repl.pattern) {
@@ -925,7 +924,6 @@
       // Use defaultCps for the prepend, matching play() — let the user's code
       // set its own tempo via cpm() / setcps() / etc.
       var fullCode = 'setcps(' + defaultCps + ');\n' + evalCode;
-      console.log('[export] fullCode prepend: setcps(' + defaultCps + ')  |  defaultCps type:', typeof defaultCps);
       var evalPattern = await evaluate(fullCode);
 
       // Extract the ACTUAL cps now that the pattern has resolved its tempo.
@@ -935,14 +933,10 @@
         var getCpsFn = typeof getCps === 'function' ? getCps : null;
         if (getCpsFn) {
           actualCps = Number(getCpsFn()) || defaultCps;
-          console.log('[export] getCps() =', actualCps, '(via Number conversion)');
-        } else {
-          console.log('[export] getCps not available, using defaultCps:', defaultCps);
         }
-      } catch(e) { console.error('[export] cps extraction error:', e); }
+      } catch(e) {}
       // Recalculate cycles using actual tempo; duration × actualCps, ceiling so we don't cut short
       var cycles = Math.ceil(duration * actualCps);
-      console.log('[export] duration=' + duration + 's, defaultCps=' + defaultCps + ', actualCps=' + actualCps + ', cycles=' + cycles + ', sampleRate=' + 44100);
       var sampleRate = 44100;
       var maxPolyphony = typeof DEFAULT_MAX_POLYPHONY !== 'undefined' ? DEFAULT_MAX_POLYPHONY : 128;
 
@@ -976,11 +970,9 @@
         if (typeof renderPatternAudio !== 'function') {
           throw new Error('renderPatternAudio not available. Please reload the page.');
         }
-        console.log('[export] calling renderPatternAudio with cps=' + actualCps + ', startCycle=0, endCycle=' + cycles + ', sr=' + sampleRate + ', maxPoly=' + maxPolyphony);
         await renderPatternAudio(pattern, actualCps, 0, cycles, sampleRate, maxPolyphony, false, 'cinnamon-roll-export');
       } else {
         // MP3: renderPatternAudio outputs WAV. We intercept the download, decode, and re-encode to MP3.
-        console.log('[export] calling renderPatternAudio (MP3 path) with cps=' + actualCps + ', startCycle=0, endCycle=' + cycles);
         await exportMp3(pattern, actualCps, cycles, sampleRate, maxPolyphony);
       }
 
