@@ -221,25 +221,67 @@
     return new (window.AudioContext || window.webkitAudioContext)();
   }
 
+  function getAdsrDefaults(hapValue) {
+    // Replicates @strudel/soundfonts getADSRValues behavior
+    var a = hapValue && hapValue.attack;
+    var d = hapValue && hapValue.decay;
+    var s = hapValue && hapValue.sustain;
+    var r = hapValue && hapValue.release;
+    if (a == null && d == null && s == null && r == null) return [0.001, 0.001, 1, 0.01];
+    var sustain = s != null ? s : (a != null && d == null) || (a == null && d == null) ? 1 : 0.001;
+    return [Math.max(a || 0, 0.001), Math.max(d || 0, 0.001), Math.min(sustain, 1), Math.max(r || 0, 0.01)];
+  }
+
+  function applyAdsr(gainParam, adsr, max, begin, end) {
+    // Replicates @strudel/webaudio getParamADSR with linear ramps
+    var attack = adsr[0], decay = adsr[1], sustain = adsr[2], release = adsr[3];
+    var min = 0.00001;  // near zero (strudel uses 0, but 0 causes issues with linear)
+    var range = max - min;
+    var sustainGain = min + sustain * range;
+    var noteDur = end - begin;
+
+    gainParam.setValueAtTime(min, begin);
+
+    if (attack > noteDur) {
+      // Attack longer than note: ramp partway to max
+      var partial = min + (noteDur / attack) * range;
+      gainParam.linearRampToValueAtTime(partial, end);
+    } else if (attack + decay > noteDur) {
+      // Attack+decay exceeds note: attack ramp, then partial decay
+      gainParam.linearRampToValueAtTime(max, begin + attack);
+      var decayFrac = (noteDur - attack) / decay;
+      var decayGain = max - decayFrac * (max - sustainGain);
+      gainParam.linearRampToValueAtTime(decayGain, end);
+    } else {
+      // Full ADSR
+      gainParam.linearRampToValueAtTime(max, begin + attack);
+      gainParam.linearRampToValueAtTime(sustainGain, begin + attack + decay);
+      gainParam.setValueAtTime(sustainGain, end);
+    }
+
+    // Release
+    gainParam.linearRampToValueAtTime(min, end + release);
+
+    return end + release + 0.01;  // stop time
+  }
+
   // --- Playback ---
 
   function playNote(presetIds, midi, deadline, cps, hapValue) {
-    // Get strudel's AudioContext — must succeed or we bail
     var ctx;
     try { ctx = getSfCtx(); } catch(e) {}
     if (!ctx || ctx.state === 'closed') return;
 
-    var when = typeof deadline === 'number' ? deadline : ctx.currentTime;
-    var gainVal  = (hapValue && typeof hapValue.gain  === 'number') ? hapValue.gain  : 1;
-    var attackVal = (hapValue && typeof hapValue.attack === 'number') ? hapValue.attack : 0;
-    var releaseVal = (hapValue && typeof hapValue.release === 'number') ? hapValue.release : 0;
+    var begin = typeof deadline === 'number' ? deadline : ctx.currentTime;
+    var duration = (hapValue && typeof hapValue.duration === 'number')
+      ? hapValue.duration / (cps || 0.5)
+      : 2;
+    var gainVal = (hapValue && typeof hapValue.gain === 'number') ? hapValue.gain : 1;
+    var adsr = getAdsrDefaults(hapValue);
 
     var tried = 0;
     function tryNext() {
-      if (tried >= presetIds.length) {
-        console.warn('[soundfonts] all presets failed for midi', midi);
-        return;
-      }
+      if (tried >= presetIds.length) { return; }
       var presetId = presetIds[tried];
       tried++;
       return getBufferData(presetId, midi).then(function(data) {
@@ -248,15 +290,9 @@
         var rate = Math.pow(2, (midi - data.origMidi) / 12);
         src.playbackRate.value = rate;
 
-        // Build a simple gain envelope node
         var gainNode = ctx.createGain();
-        gainNode.gain.setValueAtTime(0, when);
-        gainNode.gain.linearRampToValueAtTime(gainVal, when + attackVal + 0.001);
+        var stopTime = applyAdsr(gainNode.gain, adsr, gainVal, begin, begin + duration);
 
-        // Sustain at full gain — release fade is handled in the cleanup callback
-        // so it overlaps naturally with the next note's attack
-
-        // Route through strudel's output chain for room/reverb/delay effects
         try {
           if (typeof connectToDestination === 'function') {
             connectToDestination(gainNode, 2);
@@ -267,18 +303,10 @@
           gainNode.connect(ctx.destination);
         }
         src.connect(gainNode);
-        src.start(when);
+        src.start(begin);
+        src.stop(stopTime);
 
-        return function(endTime) {
-          var releaseStart = endTime || when + src.buffer.duration / rate;
-          var releaseEnd = releaseStart + (releaseVal || 0.3);
-          try {
-            gainNode.gain.cancelScheduledValues(releaseStart);
-            gainNode.gain.setValueAtTime(gainVal, releaseStart);
-            gainNode.gain.linearRampToValueAtTime(0, releaseEnd);
-          } catch(e) {}
-          try { src.stop(releaseEnd + 0.1); } catch(e) {}
-        };
+        return function() {};  // no cleanup needed, envelope handles fade
       }).catch(function(err) {
         console.warn('[soundfonts] preset ' + presetId + ' failed:', err.message);
         return tryNext();
