@@ -1,0 +1,73 @@
+setcpm(30)
+
+stack(
+  // Ground bass
+  note(`
+    d2 a2 b2 fs2
+    g2 d2 g2 a2
+  `)
+    .slow(4)
+    .sound("gm_acoustic_bass")
+    .gain(0.9)
+    .color("cyan")
+    ._punchcard(),
+
+  // Sustained chord progression
+  note(`
+    [d3,fs3,a3]
+    [a3,cs4,e4]
+    [b3,d4,fs4]
+    [fs3,a3,cs4]
+    [g3,b3,d4]
+    [d3,fs3,a3]
+    [g3,b3,d4]
+    [a3,cs4,e4]
+  `)
+    .slow(4)
+    .sound("gm_string_ensemble_1")
+    .attack(0.05)
+    .release(1.8)
+    .gain(0.55)
+    .room(0.5)
+    .color("pink")
+    ._punchcard(),
+
+  // Flowing broken-chord pattern
+  note(`
+    d4 fs4 a4 fs4
+    a3 cs4 e4 cs4
+    b3 d4 fs4 d4
+    fs3 a3 cs4 a3
+    g3 b3 d4 b3
+    d4 fs4 a4 fs4
+    g3 b3 d4 b3
+    a3 cs4 e4 cs4
+  `)
+    .slow(4)
+    .sound("gm_harpsichord")
+    .gain(0.6)
+    .room(0.25)
+    .color("yellow")
+    ._punchcard(),
+
+  // Canon-inspired upper melody
+  note(`
+    fs5 e5 d5 cs5
+    b4 a4 b4 cs5
+    d5 cs5 b4 a4
+    g4 fs4 g4 e4
+
+    d4 fs4 a4 b4
+    g4 fs4 d4 e4
+    cs4 a4 a4 g4
+    fs4 d4 fs4 e4
+  `)
+    .slow(4)
+    .sound("gm_violin")
+    .attack(0.03)
+    .release(0.4)
+    .gain(0.7)
+    .room(0.4)
+    .color("magenta")
+    ._punchcard()
+)
