@@ -918,29 +918,34 @@
       // Stop playback first (resets cycle)
       stop();
 
-      // Calculate cycles: duration * cps, ceiling so we don't cut short
-      // cps() returns a Fraction — convert via n/d (Number() is unreliable on Fractions)
-      var cpsVal = defaultCps;
-      try {
-        var rawCps = cps();
-        if (rawCps && typeof rawCps.n === 'number' && typeof rawCps.d === 'number') {
-          cpsVal = (rawCps.n / rawCps.d) * (rawCps.s || 1);
-        } else {
-          var n = Number(rawCps);
-          if (isFinite(n) && n > 0) cpsVal = n;
-        }
-      } catch(e) {}
-      var cycles = Math.ceil(duration * cpsVal);
-      var sampleRate = 44100;
-      var maxPolyphony = typeof DEFAULT_MAX_POLYPHONY !== 'undefined' ? DEFAULT_MAX_POLYPHONY : 128;
+      // The time input is ONLY a ceiling; real tempo comes from the pattern.
 
       // Evaluate code to get the pattern (renderPatternAudio needs a compiled Pattern)
       // Apply same rewrites as play() for compatibility with strudel.cc code
       var evalCode = code
         .replace(/\._punchcard\s*\(/g, '.punchcard(')
         .replace(/\._pianoroll\s*\(/g, '.pianoroll(');
-      var fullCode = 'setcps(' + cpsVal + ');\n' + evalCode;
+      // Use defaultCps for the prepend, matching play() — let the user's code
+      // set its own tempo via cpm() / setcps() / etc.
+      var fullCode = 'setcps(' + defaultCps + ');\n' + evalCode;
       var evalPattern = await evaluate(fullCode);
+
+      // Extract the ACTUAL cps now that the pattern has resolved its tempo.
+      // cps() returns a Fraction — convert via n/d (Number() is unreliable on Fractions).
+      var actualCps = defaultCps;
+      try {
+        var rawCps = cps();
+        if (rawCps && typeof rawCps.n === 'number' && typeof rawCps.d === 'number') {
+          actualCps = (rawCps.n / rawCps.d) * (rawCps.s || 1);
+        } else {
+          var n = Number(rawCps);
+          if (isFinite(n) && n > 0) actualCps = n;
+        }
+      } catch(e) {}
+      // Recalculate cycles using actual tempo; duration × actualCps, ceiling so we don't cut short
+      var cycles = Math.ceil(duration * actualCps);
+      var sampleRate = 44100;
+      var maxPolyphony = typeof DEFAULT_MAX_POLYPHONY !== 'undefined' ? DEFAULT_MAX_POLYPHONY : 128;
 
       // Same pattern resolution as play()
       var pattern = null;
@@ -972,10 +977,10 @@
         if (typeof renderPatternAudio !== 'function') {
           throw new Error('renderPatternAudio not available. Please reload the page.');
         }
-        await renderPatternAudio(pattern, cpsVal, 0, cycles, sampleRate, maxPolyphony, false, 'cinnamon-roll-export');
+        await renderPatternAudio(pattern, actualCps, 0, cycles, sampleRate, maxPolyphony, false, 'cinnamon-roll-export');
       } else {
         // MP3: renderPatternAudio outputs WAV. We intercept the download, decode, and re-encode to MP3.
-        await exportMp3(pattern, cpsVal, cycles, sampleRate, maxPolyphony);
+        await exportMp3(pattern, actualCps, cycles, sampleRate, maxPolyphony);
       }
 
       if (exportCancelled) return;
