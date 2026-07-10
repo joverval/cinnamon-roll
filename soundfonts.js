@@ -252,10 +252,30 @@
         var gainNode = ctx.createGain();
         gainNode.gain.setValueAtTime(0, when);
         gainNode.gain.linearRampToValueAtTime(gainVal, when + attackVal + 0.001);
-        var noteEnd = when + src.buffer.duration / rate;
+
+        // Note duration: use hapValue.duration (cycles) / cps to get seconds
+        var noteDur = (hapValue && typeof hapValue.duration === 'number')
+          ? hapValue.duration / (cps || 0.5)
+          : src.buffer.duration / rate;
+        var noteEnd = when + noteDur;
+
         if (releaseVal > 0) {
           gainNode.gain.setValueAtTime(gainVal, noteEnd - releaseVal);
           gainNode.gain.linearRampToValueAtTime(0, noteEnd);
+        }
+
+        // DEBUG: log envelope timing
+        if (!playNote._debugged) {
+          playNote._debugged = true;
+          console.log('[soundfonts] envelope:', {
+            midi: midi, note: hapValue && hapValue.note,
+            gain: gainVal, attack: attackVal, release: releaseVal,
+            duration: hapValue && hapValue.duration,
+            cps: cps, noteDur: noteDur.toFixed(2) + 's',
+            bufferDur: (src.buffer.duration / rate).toFixed(2) + 's',
+            when: when.toFixed(2), noteEnd: noteEnd.toFixed(2),
+            releaseStart: releaseVal > 0 ? (noteEnd - releaseVal).toFixed(2) : 'n/a'
+          });
         }
 
         src.connect(gainNode);
