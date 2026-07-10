@@ -279,7 +279,16 @@
         }
 
         src.connect(gainNode);
-        gainNode.connect(ctx.destination);
+        // Route through strudel's output chain for room/reverb/delay effects
+        try {
+          if (typeof connectToDestination === 'function') {
+            connectToDestination(gainNode, 2);
+          } else {
+            gainNode.connect(ctx.destination);
+          }
+        } catch(e) {
+          gainNode.connect(ctx.destination);
+        }
         src.start(when);
 
         return function(endTime) {
