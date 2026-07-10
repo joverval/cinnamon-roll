@@ -157,7 +157,17 @@
               var oct = Math.floor(midi / 12) - 1;
               return norm(nn[((midi % 12) + 12) % 12] + oct);
             }
-            if (v.value != null) return norm(String(v.value));
+            if (v.value != null) {
+              var val = v.value;
+              // Numeric values (MIDI-like numbers from note()) need conversion
+              if (typeof val === 'number' || /^-?\d+(\.\d+)?$/.test(String(val))) {
+                var nn = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+                var midi = Math.round(Number(val)) + 60;
+                var oct = Math.floor(midi / 12) - 1;
+                return norm(nn[((midi % 12) + 12) % 12] + oct);
+              }
+              return norm(String(val));
+            }
             if (v.freq) return String(Math.round(12 * Math.log2(v.freq / 440) + 69));
             // Sound-only label (drums, samples) — no note data present
             if (v.s) return String(v.s);
@@ -236,6 +246,13 @@
                 if (!hap.hasOnset || !hap.hasOnset()) return;
 
                 var label = self.labelFromValue(hap.value);
+                // DEBUG: dump first hap value shape to diagnose note-name parsing
+                if (!self._debugDumped) {
+                  self._debugDumped = true;
+                  var v = hap.value;
+                  var keys = v && typeof v === 'object' ? Object.keys(v).join(', ') : typeof v;
+                  console.log('[pn:debug] first hap value keys:', keys, '| value sample:', JSON.stringify(v).substring(0, 200));
+                }
                 if (!label) return;
 
                 // Get absolute time position (across cycles)
