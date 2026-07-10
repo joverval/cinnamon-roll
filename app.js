@@ -223,6 +223,7 @@
               if (!isFinite(startCycle) || startCycle < 0) startCycle = 0;
               var haps = pattern.queryArc(startCycle, startCycle + 128);
               this.capturedCycles = 128;
+              console.log('[pn:debug] buildFromPattern: queried', startCycle, '-', startCycle + 128, 'got', haps.length, 'haps');
 
               this.events = [];
               this.rows = [];
@@ -232,8 +233,12 @@
               haps.forEach(function(hap) {
                 if (!hap.hasOnset || !hap.hasOnset()) return;
 
-                var label = self.labelFromValue(hap.value);
-                if (!label) return;
+                var rawValue = hap.value;
+                var label = self.labelFromValue(rawValue);
+                if (!label) {
+                  console.log('[pn:debug]   hap skipped (no label): rawValue =', typeof rawValue, JSON.stringify(rawValue).substring(0, 120));
+                  return;
+                }
 
                 // Get absolute time position (across cycles)
                 var fract = hap.part && hap.part.begin;
@@ -298,6 +303,10 @@
                 if (midi !== null) prevMidi = midi;
               }
 
+              // DEBUG: show what we collected
+              console.log('[pn:debug] buildFromPattern result: events=' + this.events.length + ', rows=', this.rows, ', uniqueLabels=',
+                this.rows.slice(0, 12).join(', '), this.rows.length > 12 ? '...' : '');
+
             } catch (e) {
               console.error('[pn] buildFromPattern error:', e);
             }
@@ -340,13 +349,18 @@
         var m = self.noteToMidi(ev.label);
         if (m !== null) midis.push(m);
       });
-      if (midis.length === 0) return fallback;
+      console.log('[pn:debug] findBestWindow: ' + midis.length + ' pitched events, fallback=' + fallback);
+      if (midis.length === 0) {
+        console.log('[pn:debug] findBestWindow: no pitched events — returning fallback ' + fallback);
+        return fallback;
+      }
 
       var minM = midis[0], maxM = midis[0];
       for (var i = 1; i < midis.length; i++) {
         if (midis[i] < minM) minM = midis[i];
         if (midis[i] > maxM) maxM = midis[i];
       }
+      console.log('[pn:debug] findBestWindow: minM=' + minM + ' maxM=' + maxM + ' range=' + (maxM - minM) + ' semitones');
 
       var bestTop = fallback;
       var bestCount = 0;
@@ -361,6 +375,7 @@
           bestTop = top;
         }
       }
+      console.log('[pn:debug] findBestWindow result: bestTop=' + bestTop + ' bestCount=' + bestCount);
       return bestTop;
     },
 
@@ -422,6 +437,9 @@
 
         if (visibleEvents.length > 0) {
           bestTopMidi = this.findBestWindow(visibleEvents, bestTopMidi);
+          console.log('[pn:debug] draw: displayTopMidi=' + this.displayTopMidi.toFixed(1) +
+            ' bestTopMidi=' + bestTopMidi + ' visibleEvents=' + visibleEvents.length +
+            ' first3=' + JSON.stringify(visibleEvents.slice(0, 3).map(function(e) { return e.label; })));
         }
       }
 
