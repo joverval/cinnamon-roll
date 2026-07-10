@@ -406,29 +406,66 @@
       var gridW = w - labelW - 8;
       var PLAYHEAD_X = labelW + 4;
 
-      // Find the best 15-note window from events near the playhead
+      // Find the best 15-note window from events near the playhead.
+      // Two-tier strategy:
+      //   Tier 1 (tight ±0.75 cycles): center on what's playing RIGHT NOW.
+      //     As the playhead cycles through .add() transpositions, the
+      //     window follows the currently-sounding notes.
+      //   Tier 2 (fallback): if nothing's in the tight window, use the
+      //     densest-cluster approach across a broader time range.
       var bestTopMidi = Math.round(this.displayTopMidi);
       if (this.events && this.events.length > 0) {
-        // Filter events within ~2 cycles of the playhead in absolute time
-        // (not cycle-index modulo, which returns ALL events for repeating patterns)
-        var visibleEvents = this.events.filter(function(ev) {
+        var self = this;
+
+        // Tier 1: events within ±0.75 cycles of the playhead
+        var tightEvents = this.events.filter(function(ev) {
           var relTime = ev.time - absoluteTime;
-          return relTime >= -1 && relTime <= 3;
+          return relTime >= -0.75 && relTime <= 1.25;
         });
 
-        if (visibleEvents.length === 0) {
-          // No events near playhead — fall back to nearest event by time
-          var nearestDist = Infinity;
-          var nearestEv = null;
-          this.events.forEach(function(ev) {
-            var dist = Math.abs(ev.time - absoluteTime);
-            if (dist < nearestDist) { nearestDist = dist; nearestEv = ev; }
-          });
-          if (nearestEv) visibleEvents = [nearestEv];
-        }
+        // Collect MIDIs from tight window
+        var tightMidis = [];
+        tightEvents.forEach(function(ev) {
+          var m = self.noteToMidi(ev.label);
+          if (m !== null) tightMidis.push(m);
+        });
 
-        if (visibleEvents.length > 0) {
-          bestTopMidi = this.findBestWindow(visibleEvents, bestTopMidi);
+        if (tightMidis.length > 0) {
+          // Center the 15-semitone window on the tight-event midpoint
+          var minM = tightMidis[0], maxM = tightMidis[0];
+          for (var i = 1; i < tightMidis.length; i++) {
+            if (tightMidis[i] < minM) minM = tightMidis[i];
+            if (tightMidis[i] > maxM) maxM = tightMidis[i];
+          }
+          // If the tight window fits in 15 semitones, center it; otherwise
+          // use the densest cluster within the tight events
+          if (maxM - minM < 14) {
+            var center = Math.round((minM + maxM) / 2);
+            bestTopMidi = center + 7;
+          } else {
+            bestTopMidi = this.findBestWindow(tightEvents, bestTopMidi);
+          }
+        } else {
+          // Tier 2: no events in tight window — fall back to broader search
+          var broadEvents = this.events.filter(function(ev) {
+            var relTime = ev.time - absoluteTime;
+            return relTime >= -1 && relTime <= 3;
+          });
+
+          if (broadEvents.length === 0) {
+            // Extreme fallback: nearest event by time
+            var nearestDist = Infinity;
+            var nearestEv = null;
+            this.events.forEach(function(ev) {
+              var dist = Math.abs(ev.time - absoluteTime);
+              if (dist < nearestDist) { nearestDist = dist; nearestEv = ev; }
+            });
+            if (nearestEv) broadEvents = [nearestEv];
+          }
+
+          if (broadEvents.length > 0) {
+            bestTopMidi = this.findBestWindow(broadEvents, bestTopMidi);
+          }
         }
       }
 
