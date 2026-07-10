@@ -253,32 +253,9 @@
         gainNode.gain.setValueAtTime(0, when);
         gainNode.gain.linearRampToValueAtTime(gainVal, when + attackVal + 0.001);
 
-        // Note duration: use hapValue.duration (cycles) / cps to get seconds
-        var noteDur = (hapValue && typeof hapValue.duration === 'number')
-          ? hapValue.duration / (cps || 0.5)
-          : src.buffer.duration / rate;
-        var noteEnd = when + noteDur;
+        // Sustain at full gain — release fade is handled in the cleanup callback
+        // so it overlaps naturally with the next note's attack
 
-        if (releaseVal > 0) {
-          gainNode.gain.setValueAtTime(gainVal, noteEnd - releaseVal);
-          gainNode.gain.linearRampToValueAtTime(0, noteEnd);
-        }
-
-        // DEBUG: log envelope timing
-        if (!playNote._debugged) {
-          playNote._debugged = true;
-          console.log('[soundfonts] envelope:', {
-            midi: midi, note: hapValue && hapValue.note,
-            gain: gainVal, attack: attackVal, release: releaseVal,
-            duration: hapValue && hapValue.duration,
-            cps: cps, noteDur: noteDur.toFixed(2) + 's',
-            bufferDur: (src.buffer.duration / rate).toFixed(2) + 's',
-            when: when.toFixed(2), noteEnd: noteEnd.toFixed(2),
-            releaseStart: releaseVal > 0 ? (noteEnd - releaseVal).toFixed(2) : 'n/a'
-          });
-        }
-
-        src.connect(gainNode);
         // Route through strudel's output chain for room/reverb/delay effects
         try {
           if (typeof connectToDestination === 'function') {
@@ -289,11 +266,18 @@
         } catch(e) {
           gainNode.connect(ctx.destination);
         }
+        src.connect(gainNode);
         src.start(when);
 
         return function(endTime) {
-          var stopAt = endTime || ctx.currentTime + src.buffer.duration / rate;
-          try { src.stop(stopAt); } catch(e) {}
+          var releaseStart = endTime || when + src.buffer.duration / rate;
+          var releaseEnd = releaseStart + (releaseVal || 0.3);
+          try {
+            gainNode.gain.cancelScheduledValues(releaseStart);
+            gainNode.gain.setValueAtTime(gainVal, releaseStart);
+            gainNode.gain.linearRampToValueAtTime(0, releaseEnd);
+          } catch(e) {}
+          try { src.stop(releaseEnd + 0.1); } catch(e) {}
         };
       }).catch(function(err) {
         console.warn('[soundfonts] preset ' + presetId + ' failed:', err.message);
