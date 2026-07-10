@@ -1367,26 +1367,38 @@
   }
 
   async function playSoundPreview(urlOrBank) {
-    try {
-      // If passed a bank name, look up first sample
-      var url = urlOrBank;
-      if (soundBanks.length && urlOrBank.indexOf('/') === -1) {
-        var entry = soundBanks.find(function(b) { return b.name === urlOrBank; });
-        if (!entry || !entry.samples.length) return;
-        url = entry.samples[0];
-      }
+      try {
+        // Soundfont preview: play middle C through strudel scheduler
+        if (typeof urlOrBank === 'string' && urlOrBank.indexOf('__sf__') === 0) {
+          var sfName = urlOrBank.slice(6);
+          console.log('[sounds] sf preview:', sfName, 'engineReady:', engineReady, 'repl:', !!repl);
+          if (!engineReady) return;
+          try {
+            var code = 'note("c4").s("' + sfName + '").room(0.3).gain(0.5)';
+            repl.evaluate(code, true);
+          } catch(e) { console.warn('[sounds] sf preview error:', e); }
+          return;
+        }
 
-      // Soundfont preview: play middle C through strudel scheduler
-      if (typeof url === 'string' && url.indexOf('__sf__') === 0) {
-        var sfName = url.slice(6);
-        console.log('[sounds] sf preview:', sfName, 'engineReady:', engineReady, 'repl:', !!repl);
-        if (!engineReady) return;
-        try {
-          var code = 'note("c4").s("' + sfName + '").room(0.3).gain(0.5)';
-          repl.evaluate(code, true);
-        } catch(e) { console.warn('[sounds] sf preview error:', e); }
-        return;
-      }
+        // If passed a bank name, look up first sample
+        var url = urlOrBank;
+        if (soundBanks.length && urlOrBank.indexOf('/') === -1) {
+          var entry = soundBanks.find(function(b) { return b.name === urlOrBank; });
+          if (!entry || !entry.samples.length) return;
+          url = entry.samples[0];
+        }
+
+        // Soundfont preview (via bank lookup — url is now '__sf__...')
+        if (typeof url === 'string' && url.indexOf('__sf__') === 0) {
+          var sfName2 = url.slice(6);
+          console.log('[sounds] sf preview:', sfName2, 'engineReady:', engineReady, 'repl:', !!repl);
+          if (!engineReady) return;
+          try {
+            var code2 = 'note("c4").s("' + sfName2 + '").room(0.3).gain(0.5)';
+            repl.evaluate(code2, true);
+          } catch(e) { console.warn('[sounds] sf preview error:', e); }
+          return;
+        }
 
       var ctx = getPreviewCtx();
       var resp = await fetch(url);
