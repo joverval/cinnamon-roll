@@ -289,12 +289,6 @@
       var presetIds = GM[name];
 
       registerSound(name, function(begin, hapValue, deadline, cps) {
-        // DEBUG: log full hap value to inspect attack/release/gain/room params
-        if (!registered._debugged) {
-          registered._debugged = true;
-          console.log('[soundfonts] hapValue keys:', Object.keys(hapValue));
-          console.log('[soundfonts] hapValue:', JSON.parse(JSON.stringify(hapValue)));
-        }
         var midi = getMidiFromHap(hapValue);
         return playNote(presetIds, midi, deadline, cps, hapValue);
       });
