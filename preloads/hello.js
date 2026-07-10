@@ -1,3 +1,5 @@
+// name: Hello
+// description: Gentle starter pattern with bass, pad, and drums
 setcpm(60)
 
 $: n("0 <2 4> [5 7] 0")

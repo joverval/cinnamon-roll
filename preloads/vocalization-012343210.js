@@ -1,3 +1,5 @@
+// name: Vocalization 012343210
+// description: Ascending-descending melodic vocalization with punchcard
 setcpm(12)
 $: n("[0,2,4]@2 ~ 0 1 2 3 4 3 2 1 0 ~ [0,2,4]@2 ~"
      .add("<0 1 2 3 2 1 0>"

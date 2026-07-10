@@ -1,21 +1,21 @@
 [
   {
-    "name": "hello",
+    "name": "Hello",
     "file": "hello.js",
-    "description": "Gentle starter pattern"
+    "description": "Gentle starter pattern with bass, pad, and drums"
   },
   {
-    "name": "vocalization 012343210",
-    "file": "vocalization-012343210.js",
-    "description": "Ascending-descending melodic vocalization with punchcard"
-  },
-  {
-    "name": "vocalization 0102043210",
+    "name": "Vocalization 0102043210",
     "file": "vocalization-0102043210.js",
     "description": "Melodic vocalization with staggered motif and 12-semitone arpeggio"
   },
   {
-    "name": "vocalization 07654321",
+    "name": "Vocalization 012343210",
+    "file": "vocalization-012343210.js",
+    "description": "Ascending-descending melodic vocalization with punchcard"
+  },
+  {
+    "name": "Vocalization 07654321",
     "file": "vocalization-07654321.js",
     "description": "Descending from 7 with major triad anchor and 12-semitone arpeggio"
   }

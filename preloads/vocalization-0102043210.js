@@ -1,3 +1,5 @@
+// name: Vocalization 0102043210
+// description: Melodic vocalization with staggered motif and 12-semitone arpeggio
 setcpm(12)
 $: n("[0,2,4]@3 ~ 0 1 0 2 0 4 3 2 1 0 ~ [0,2,4]@3 ~"
      .add("<0 1 2 3 2 1 0>"
