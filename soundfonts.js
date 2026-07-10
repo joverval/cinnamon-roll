@@ -294,15 +294,6 @@
         var gainNode = ctx.createGain();
         var stopTime = applyAdsr(gainNode.gain, adsr, gainVal, begin, begin + duration);
 
-        // DEBUG: log every note's timing
-        console.log('[sf] note=' + (hapValue && hapValue.note) + ' midi=' + midi +
-          ' begin=' + begin.toFixed(3) + ' dur=' + duration.toFixed(2) +
-          's end=' + (begin + duration).toFixed(3) +
-          ' release=' + adsr[3].toFixed(3) +
-          ' stop=' + stopTime.toFixed(3) +
-          ' sustain=' + adsr[2].toFixed(3) +
-          ' a/d=' + adsr[0].toFixed(3) + '/' + adsr[1].toFixed(3));
-
         try {
           if (typeof connectToDestination === 'function') {
             connectToDestination(gainNode, 2);
