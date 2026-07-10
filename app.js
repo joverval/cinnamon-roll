@@ -681,6 +681,7 @@
       // ticking forward before the pattern starts.
       var fullCode = 'setcps(' + defaultCps + ');\n' + evalCode;
       var evalPattern = await evaluate(fullCode);
+      console.log('[play] after evaluate: cps() type:', cps ? typeof cps() : 'cps not available', ' defaultCps:', defaultCps);
 
       var pattern = null;
       if (repl && repl.pattern) {
@@ -928,6 +929,7 @@
       // Use defaultCps for the prepend, matching play() — let the user's code
       // set its own tempo via cpm() / setcps() / etc.
       var fullCode = 'setcps(' + defaultCps + ');\n' + evalCode;
+      console.log('[export] fullCode prepend: setcps(' + defaultCps + ')  |  defaultCps type:', typeof defaultCps);
       var evalPattern = await evaluate(fullCode);
 
       // Extract the ACTUAL cps now that the pattern has resolved its tempo.
