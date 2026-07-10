@@ -273,8 +273,9 @@
     if (!ctx || ctx.state === 'closed') return;
 
     var begin = typeof beginTime === 'number' ? beginTime : ctx.currentTime;
+    // hapValue.duration is already in seconds (strudel scheduler converts cycles→seconds)
     var duration = (hapValue && typeof hapValue.duration === 'number')
-      ? hapValue.duration / (cps || 0.5)
+      ? hapValue.duration
       : 2;
     var gainVal = (hapValue && typeof hapValue.gain === 'number') ? hapValue.gain : 1;
     var adsr = getAdsrDefaults(hapValue);
