@@ -223,13 +223,16 @@
 
   // --- Playback ---
 
-  function playNote(presetIds, midi, deadline, cps) {
+  function playNote(presetIds, midi, deadline, cps, hapValue) {
     // Get strudel's AudioContext — must succeed or we bail
     var ctx;
     try { ctx = getSfCtx(); } catch(e) {}
     if (!ctx || ctx.state === 'closed') return;
 
     var when = typeof deadline === 'number' ? deadline : ctx.currentTime;
+    var gainVal  = (hapValue && typeof hapValue.gain  === 'number') ? hapValue.gain  : 1;
+    var attackVal = (hapValue && typeof hapValue.attack === 'number') ? hapValue.attack : 0;
+    var releaseVal = (hapValue && typeof hapValue.release === 'number') ? hapValue.release : 0;
 
     var tried = 0;
     function tryNext() {
@@ -245,8 +248,18 @@
         var rate = Math.pow(2, (midi - data.origMidi) / 12);
         src.playbackRate.value = rate;
 
-        // Connect directly to destination (strudel effects chain handles gain/room/delay)
-        src.connect(ctx.destination);
+        // Build a simple gain envelope node
+        var gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(0, when);
+        gainNode.gain.linearRampToValueAtTime(gainVal, when + attackVal + 0.001);
+        var noteEnd = when + src.buffer.duration / rate;
+        if (releaseVal > 0) {
+          gainNode.gain.setValueAtTime(gainVal, noteEnd - releaseVal);
+          gainNode.gain.linearRampToValueAtTime(0, noteEnd);
+        }
+
+        src.connect(gainNode);
+        gainNode.connect(ctx.destination);
         src.start(when);
 
         return function(endTime) {
@@ -276,8 +289,14 @@
       var presetIds = GM[name];
 
       registerSound(name, function(begin, hapValue, deadline, cps) {
+        // DEBUG: log full hap value to inspect attack/release/gain/room params
+        if (!registered._debugged) {
+          registered._debugged = true;
+          console.log('[soundfonts] hapValue keys:', Object.keys(hapValue));
+          console.log('[soundfonts] hapValue:', JSON.parse(JSON.stringify(hapValue)));
+        }
         var midi = getMidiFromHap(hapValue);
-        return playNote(presetIds, midi, deadline, cps);
+        return playNote(presetIds, midi, deadline, cps, hapValue);
       });
     });
 
