@@ -723,6 +723,12 @@
         prebake: () => samples('samples/strudel.json'),
       });
       console.log('[repl] initialized, methods:', Object.keys(repl || {}));
+
+      // Register GM soundfont instruments
+      if (window.soundfonts && typeof window.soundfonts.register === 'function') {
+        window.soundfonts.register();
+      }
+
       engineReady = true;
       clearButtonStates();
 
@@ -1065,6 +1071,20 @@
         throw new Error('Could not compile pattern. Check your code for errors.');
       }
 
+      // Pre-warm soundfont instruments before offline render.
+      // OfflineAudioContext can't wait for async fetches, so all sf data
+      // must be cached in memory before renderPatternAudio.
+      if (window.soundfonts && typeof window.soundfonts.warm === 'function') {
+        var sfNames = code.match(/gm_[a-z_0-9]+/g);
+        if (sfNames) {
+          var seen = {};
+          for (var si = 0; si < sfNames.length; si++) {
+            var sn = sfNames[si];
+            if (!seen[sn]) { seen[sn] = true; await window.soundfonts.warm(sn); }
+          }
+        }
+      }
+
       // renderPatternAudio takes: pattern, cps, startCycle, endCycle, sampleRate, maxPolyphony, multiChannel, filename
       // It closes the live AudioContext, creates an OfflineAudioContext, renders, and downloads WAV.
       // After it completes, we need to reinitialize live audio.
@@ -1182,6 +1202,10 @@
       repl = await initStrudel({
         prebake: function() { return samples('samples/strudel.json'); },
       });
+      // Re-register soundfonts after reinit
+      if (window.soundfonts && typeof window.soundfonts.register === 'function') {
+        window.soundfonts.register();
+      }
       engineReady = true;
       clearButtonStates();
       console.log('[export] Engine reinitialized after render');
@@ -1351,6 +1375,19 @@
         if (!entry || !entry.samples.length) return;
         url = entry.samples[0];
       }
+
+      // Soundfont preview: play middle C through strudel scheduler
+      if (typeof url === 'string' && url.indexOf('__sf__') === 0) {
+        var sfName = url.slice(6);
+        if (!engineReady) return;
+        // Quick evaluate to trigger the soundfont note
+        try {
+          var code = 'note(\"c4\").s(\"' + sfName + '\").room(0.3).gain(0.5)';
+          repl.evaluate(code);
+        } catch(e) { console.warn('[sounds] sf preview error:', e); }
+        return;
+      }
+
       var ctx = getPreviewCtx();
       var resp = await fetch(url);
       if (!resp.ok) return;
@@ -1381,6 +1418,15 @@
         });
       });
       soundBanks.sort(function(a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+
+      // Append GM soundfont instruments (no WAV files, handled by registerSound)
+      if (window.soundfonts && typeof window.soundfonts.list === 'function') {
+        var sfNames = window.soundfonts.list();
+        sfNames.forEach(function(name) {
+          soundBanks.push({ name: name, samples: ['__sf__' + name], count: 1 });
+        });
+      }
+
       renderSounds(soundBanks);
     } catch(e) {
       soundsList.innerHTML = '<div class="preload-error">Failed to load sounds</div>';
