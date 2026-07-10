@@ -35,6 +35,11 @@ jobs:
           first_line = msg.split('\n')[0]
           build_info = f"{sha} -- {first_line}"
 
+          # Escape characters that would break the JS string literal
+          build_info = build_info.replace('\\', '\\\\')
+          build_info = build_info.replace("'", "\\'")
+          build_info = build_info.replace('`', '\\`')
+
           with open('app.js', 'r') as f:
               content = f.read()
           content = content.replace('__COMMIT_INFO__', build_info)
