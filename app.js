@@ -223,7 +223,6 @@
               if (!isFinite(startCycle) || startCycle < 0) startCycle = 0;
               var haps = pattern.queryArc(startCycle, startCycle + 128);
               this.capturedCycles = 128;
-              console.log('[pn:debug] buildFromPattern: queried', startCycle, '-', startCycle + 128, 'got', haps.length, 'haps');
 
               this.events = [];
               this.rows = [];
@@ -233,12 +232,8 @@
               haps.forEach(function(hap) {
                 if (!hap.hasOnset || !hap.hasOnset()) return;
 
-                var rawValue = hap.value;
-                var label = self.labelFromValue(rawValue);
-                if (!label) {
-                  console.log('[pn:debug]   hap skipped (no label): rawValue =', typeof rawValue, JSON.stringify(rawValue).substring(0, 120));
-                  return;
-                }
+                var label = self.labelFromValue(hap.value);
+                if (!label) return;
 
                 // Get absolute time position (across cycles)
                 var fract = hap.part && hap.part.begin;
@@ -303,10 +298,6 @@
                 if (midi !== null) prevMidi = midi;
               }
 
-              // DEBUG: show what we collected
-              console.log('[pn:debug] buildFromPattern result: events=' + this.events.length + ', rows=', this.rows, ', uniqueLabels=',
-                this.rows.slice(0, 12).join(', '), this.rows.length > 12 ? '...' : '');
-
             } catch (e) {
               console.error('[pn] buildFromPattern error:', e);
             }
@@ -341,7 +332,9 @@
     },
 
     /** Find the 15-semitone window [top-14, top] with the most notes.
-     *  Returns the top MIDI of the best window (integer). */
+     *  Returns the top MIDI of the best window (integer).
+     *  When range < 14: centers window on the note cluster midpoint.
+     *  On ties: picks the window closest to the fallback (stability). */
     findBestWindow: function(events, fallback) {
       var midis = [];
       var self = this;
@@ -349,18 +342,20 @@
         var m = self.noteToMidi(ev.label);
         if (m !== null) midis.push(m);
       });
-      console.log('[pn:debug] findBestWindow: ' + midis.length + ' pitched events, fallback=' + fallback);
-      if (midis.length === 0) {
-        console.log('[pn:debug] findBestWindow: no pitched events — returning fallback ' + fallback);
-        return fallback;
-      }
+      if (midis.length === 0) return fallback;
 
       var minM = midis[0], maxM = midis[0];
       for (var i = 1; i < midis.length; i++) {
         if (midis[i] < minM) minM = midis[i];
         if (midis[i] > maxM) maxM = midis[i];
       }
-      console.log('[pn:debug] findBestWindow: minM=' + minM + ' maxM=' + maxM + ' range=' + (maxM - minM) + ' semitones');
+
+      // Notes clustered in less than 14 semitones: center the 15-semitone
+      // window on the midpoint so all notes are visible with room to spare.
+      if (maxM - minM < 14) {
+        var center = Math.round((minM + maxM) / 2);
+        return center + 7;
+      }
 
       var bestTop = fallback;
       var bestCount = 0;
@@ -370,12 +365,13 @@
         for (var j = 0; j < midis.length; j++) {
           if (midis[j] >= top - 14 && midis[j] <= top) count++;
         }
-        if (count > bestCount) {
+        // Prefer more notes; on ties, prefer window closer to current position
+        if (count > bestCount ||
+            (count === bestCount && Math.abs(top - fallback) < Math.abs(bestTop - fallback))) {
           bestCount = count;
           bestTop = top;
         }
       }
-      console.log('[pn:debug] findBestWindow result: bestTop=' + bestTop + ' bestCount=' + bestCount);
       return bestTop;
     },
 
@@ -413,23 +409,19 @@
       // Find the best 15-note window from events near the playhead
       var bestTopMidi = Math.round(this.displayTopMidi);
       if (this.events && this.events.length > 0) {
-        var capturedLen = this.capturedCycles || 128;
-        var wrappedCycle = currentCycle % capturedLen;
-
+        // Filter events within ~2 cycles of the playhead in absolute time
+        // (not cycle-index modulo, which returns ALL events for repeating patterns)
         var visibleEvents = this.events.filter(function(ev) {
-          var evCycle = Math.floor(ev.time) % capturedLen;
-          for (var offset = -2; offset <= 2; offset++) {
-            if (evCycle === ((wrappedCycle + offset) % capturedLen + capturedLen) % capturedLen) return true;
-          }
-          return false;
+          var relTime = ev.time - absoluteTime;
+          return relTime >= -1 && relTime <= 3;
         });
 
         if (visibleEvents.length === 0) {
+          // No events near playhead — fall back to nearest event by time
           var nearestDist = Infinity;
           var nearestEv = null;
           this.events.forEach(function(ev) {
-            var evCycle = Math.floor(ev.time) % capturedLen;
-            var dist = ((evCycle - wrappedCycle) % capturedLen + capturedLen) % capturedLen;
+            var dist = Math.abs(ev.time - absoluteTime);
             if (dist < nearestDist) { nearestDist = dist; nearestEv = ev; }
           });
           if (nearestEv) visibleEvents = [nearestEv];
@@ -437,9 +429,6 @@
 
         if (visibleEvents.length > 0) {
           bestTopMidi = this.findBestWindow(visibleEvents, bestTopMidi);
-          console.log('[pn:debug] draw: displayTopMidi=' + this.displayTopMidi.toFixed(1) +
-            ' bestTopMidi=' + bestTopMidi + ' visibleEvents=' + visibleEvents.length +
-            ' first3=' + JSON.stringify(visibleEvents.slice(0, 3).map(function(e) { return e.label; })));
         }
       }
 
