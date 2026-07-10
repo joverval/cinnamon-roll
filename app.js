@@ -99,7 +99,7 @@
   /* ── Punchcard ── */
   var punchcard = window.punchcard = {
     animId: null,
-    events: [],     // {time, label} — cycle time + note/sound name
+    events: [],     // {time, label, color} — color from .color() or null for default pink
           rows: [],       // unique row labels
           startCycle: 0,
           cycleLen: 1,
@@ -281,7 +281,7 @@
                 if (seen[dedupKey]) return;
                 seen[dedupKey] = true;
 
-                self.events.push({ time: time, label: String(label) });
+                self.events.push({ time: time, label: String(label), color: hap.value.color || null });
 
                 if (self.rows.indexOf(String(label)) === -1) {
                   self.rows.push(String(label));
@@ -333,6 +333,26 @@
             }
             punchcardCtx.clearRect(0, 0, punchcardCanvas.width, punchcardCanvas.height);
           },
+
+    /** Parse a CSS color string into [r, g, b] array. Caches results. */
+    _colorCache: {},
+    parseColor: function(cssColor) {
+      if (!cssColor) return null;
+      if (this._colorCache[cssColor]) return this._colorCache[cssColor];
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width = 1; canvas.height = 1;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = cssColor;
+        ctx.fillRect(0, 0, 1, 1);
+        var d = ctx.getImageData(0, 0, 1, 1).data;
+        var rgb = [d[0], d[1], d[2]];
+        this._colorCache[cssColor] = rgb;
+        return rgb;
+      } catch(e) {
+        return null;
+      }
+    },
 
     getPlayhead: function() {
       // Use strudel's getTime() which is cycle-based and immune to tempo changes.
@@ -399,6 +419,7 @@
     },
 
     draw: function() {
+      var self = this;
       var ctx = punchcardCtx;
       var dpr = window.devicePixelRatio || 1;
       var w = punchcardCanvas.width / dpr;
@@ -640,7 +661,16 @@
           var alpha = Math.max(0.08, 0.75 - dist * 0.5);
           if (dist > 3) alpha = 0.05;
 
-          ctx.fillStyle = 'rgba(255,140,140,' + alpha.toFixed(2) + ')';
+          if (ev.color) {
+            var rgb = self.parseColor(ev.color);
+            if (rgb) {
+              ctx.fillStyle = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + alpha.toFixed(2) + ')';
+            } else {
+              ctx.fillStyle = 'rgba(255,140,140,' + alpha.toFixed(2) + ')';
+            }
+          } else {
+            ctx.fillStyle = 'rgba(255,140,140,' + alpha.toFixed(2) + ')';
+          }
           ctx.beginPath();
           ctx.roundRect(ex, y + 1, ew, eh, 2);
           ctx.fill();
