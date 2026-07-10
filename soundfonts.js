@@ -202,27 +202,34 @@
     var len = binaryStr.length;
     var bytes = new Uint8Array(len);
     for (var i = 0; i < len; i++) bytes[i] = binaryStr.charCodeAt(i);
-    var ctx = getAudioContext();
+    // Must use strudel's AudioContext so buffers are compatible
+    var ctx = getSfCtx();
     return ctx.decodeAudioData(bytes.buffer.slice(0));
   }
 
-  function getAudioContext() {
-    // Try strudel's context first (for proper routing)
+  // Get strudel's AudioContext. Must NOT shadow the global getAudioContext!
+  function getSfCtx() {
     try {
-      if (typeof getAudioContext === 'function') return getAudioContext();
+      if (typeof getAudioContext === 'function') {
+        var ctx = getAudioContext();
+        if (ctx && ctx.state !== 'closed') return ctx;
+      }
     } catch(e) {}
-    // Fallback
+    // Fallback: creates a one-off context (note: buffers on this context
+    // won't play through strudel's pipeline — only used as last resort)
     return new (window.AudioContext || window.webkitAudioContext)();
   }
 
   // --- Playback ---
 
   function playNote(presetIds, midi, deadline, cps) {
-    var ctx = getAudioContext();
-    var now = ctx.currentTime;
-    var when = typeof deadline === 'number' ? deadline : now;
+    // Get strudel's AudioContext — must succeed or we bail
+    var ctx;
+    try { ctx = getSfCtx(); } catch(e) {}
+    if (!ctx || ctx.state === 'closed') return;
 
-    // Try presets in order until one works
+    var when = typeof deadline === 'number' ? deadline : ctx.currentTime;
+
     var tried = 0;
     function tryNext() {
       if (tried >= presetIds.length) {
@@ -234,27 +241,19 @@
       return getBufferData(presetId, midi).then(function(data) {
         var src = ctx.createBufferSource();
         src.buffer = data.buffer;
-
-        // Calculate playback rate for correct pitch
         var rate = Math.pow(2, (midi - data.origMidi) / 12);
         src.playbackRate.value = rate;
 
-        // Connect to destination (use strudel's output chain if available)
-        try {
-          if (typeof connectToDestination === 'function') {
-            connectToDestination(src, 2);
-          } else {
-            src.connect(ctx.destination);
-          }
-        } catch(e) {
-          src.connect(ctx.destination);
-        }
-
+        // Connect directly to destination (strudel effects chain handles gain/room/delay)
+        src.connect(ctx.destination);
         src.start(when);
+
         return function(endTime) {
-          try { src.stop(endTime || ctx.currentTime + 0.1); } catch(e) {}
+          var stopAt = endTime || ctx.currentTime + src.buffer.duration / rate;
+          try { src.stop(stopAt); } catch(e) {}
         };
-      }).catch(function() {
+      }).catch(function(err) {
+        console.warn('[soundfonts] preset ' + presetId + ' failed:', err.message);
         return tryNext();
       });
     }
